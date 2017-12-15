@@ -1,6 +1,7 @@
-import os
+from pathlib import Path
 import argparse
 from subprocess import run
+import json
 
 
 def main(argv):
@@ -11,69 +12,81 @@ def main(argv):
 
     The default arguments assume the script is being run with the MOA distribution as the working directory.
 
-    Usage: python ~/path/to/moa_experiments.py --framework MOA --disthome /path/to/moa/ --datadir ~/data/ --fileoutput
+    Usage: python moa_experiments.py --framework MOA --moajar /path/to/moa.jar --datadir /arff_data/ --fileoutput
     """
-    # TODO(tvas): JSON ouput, including runtime for each experiment and the settings used.
-    # It would be better to use timings provided by the frameworks however, to not have to worry about JVM init times
     parser = argparse.ArgumentParser(description="Runs MOA experiments and stores results into files")
-    parser.add_argument("--framework", help="Which framework to use, choose from MOA or SAMOA",
-                        choices=["MOA", "SAMOA"], required=True)
-    parser.add_argument("--disthome", help="The home dir of the (SA)MOA distribution", required=True)
-    parser.add_argument("--datadir", help="A directory containing one or more arff files", required=True)
-    parser.add_argument("--meta", help="The meta algorithm to use for training")
-    parser.add_argument("--base", help="The base algorithm to use for training")
-    parser.add_argument("--size", help="The size of the ensemble", type=int, default=10)
-    parser.add_argument("--interval", help="Report performance every X examples", type=int, default=1000)
-    parser.add_argument("--outputdir", help="The directory to place the output files. Creates dir under datadir "
-                                            "if not given")
+    parser.add_argument("--moajar", help="Path to MOA jar", required=True)
+    parser.add_argument("--datadir", help="A directory containing one or more arff data files", required=True)
+    parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
+                        choices=["meta.OnlineQRF", "meta.OoBConformalRegressor"])
+    parser.add_argument("--calibration", help="An arff file containing calibration instances, "
+                                              "to be used with meta.ConformalRegressor.")
+    # parser.add_argument("--base", help="The base algorithm to use for training")
+    parser.add_argument("--repeats", help="Number of times to repeat each experiment", type=int, default=1)
+    parser.add_argument("--interval", help="Performance report window size", type=int, default=1000)
+    parser.add_argument("--outputdir", help="The directory to place the output files. If not given, creates "
+                                            "dir under datadir.")
+    parser.add_argument("--ensemble-size", help="The size of the ensemble", type=int, default=10)
+    parser.add_argument("--confidence", help="The confidence level of the predictions", type=float, default=0.9)
     parser.add_argument("--fileoutput", default=False, action="store_true",
                         help="When given, output results to file instead of only printing to stdout")
+    parser.add_argument("--overwrite", default=False, action="store_true",
+                        help="When given, it will overwrite results in the output folder")
 
     args = parser.parse_args(argv)
 
     # Tailor the command to each framework
-    if args.framework == "MOA":
-        task = "EvaluatePrequential"
-        command_prefix = "java -cp {disthome}/moa.jar -javaagent:{disthome}/lib/sizeofag-1.0.0.jar " \
-                         "moa.DoTask ".format(disthome=args.disthome)
-        if args.meta is None:
-            args.meta = "meta.OzaBoost"
-        if args.base is None:
-            args.base = "trees.HoeffdingTree"
-    else:  # Using SAMOA framewokr
-        task = "PrequentialEvaluation"
-        command_prefix = "{disthome}/bin/samoa local {disthome}/target/SAMOA-Local-0.5.0-incubating-SNAPSHOT.jar " \
-                         "".format(disthome=args.disthome)
-        if args.meta is None:
-            args.meta = "classifiers.ensemble.BoostVHT"
-        if args.base is None:
-            args.base = "classifiers.trees.VerticalHoeffdingTree"
 
-    # Get all the .arff files in the data directory
-    arff_file_list = [file for file in os.listdir(args.datadir) if file.endswith(".arff")]
-    if len(arff_file_list) == 0:
-        raise FileNotFoundError("No arff files found in the provided directory: {}".format(args.datadir))
+    task = "EvaluatePrequentialRegression -e (IntervalRegressionPerformanceEvaluator -w {})".format(args.interval)
+    moa_jar_path = Path(args.moajar)
+    moa_dir = moa_jar_path.parent
+    command_prefix = "java -cp \"{moa_jar}:{moa_dir}/dependency-jars/*\" " \
+                     "-javaagent:{moa_dir}/dependency-jars/sizeofag-1.0.0.jar " \
+                     "moa.DoTask ".format(moa_dir=moa_dir, moa_jar=moa_jar_path)
+
+    # Set up input and output dirs
+    data_path = Path(args.datadir)
+
+    # TODO: Customization for base learner (buckets will be necessary)
+    if args.meta == "meta.OnlineQRF":
+        base_learner = "(trees.FIMTQR -e)"
+    else:
+        base_learner = "(trees.FIMTDD -e)"
 
     # If the user did not provide an output dir, put results under the data folder
     if args.outputdir is None:
-        args.outputdir = "{}".format(os.path.join(args.datadir, "results-{}".format(args.framework)))
+        output_path = data_path / "results-MOA"
+    else:
+        output_path = Path(args.outputdir)
 
     # Create the output dir if needed
-    if args.fileoutput and not os.path.exists(args.outputdir):
-        os.mkdir(args.outputdir)
-    # Run one experiment for each data file
-    for arff_file in arff_file_list:
-        command = command_prefix + " \"{task} -l ({meta} -l {base} -s {size}) " \
-                  "-s (ArffFileStream -f {arff_file}) " \
-                  "-f {interval}\"".format(task=task, meta=args.meta, base=args.base,
-                                           size=args.size, arff_file=os.path.join(args.datadir, arff_file),
-                                           interval=args.interval)
-        if args.fileoutput:
-            command += " -d {}".format(os.path.join(args.outputdir, arff_file + "_out.csv"))
-        print("Executing command: {}".format(command))
-        run(command, shell=True, check=True)
+    output_path.mkdir(parents=True,
+                      exist_ok=args.overwrite)
+
+    # Run experiments for each data file
+    for arff_file in data_path.glob("*.arff"):
+        learner = "{meta} -l {base} -s {size} -a {confidence}".format(
+            meta=args.meta, base=base_learner, size=args.ensemble_size,
+            confidence=args.confidence)
+        for i in range(args.repeats):
+            command = command_prefix + "\"" + "{task} -l ({learner}) " \
+                                              "-s (ArffFileStream -f {arff_file}) " \
+                                              "-f {interval}".format(task=task, learner=learner,
+                                                                     arff_file=data_path / arff_file,
+                                                                     interval=args.interval)
+            if args.fileoutput:
+                command += " -d {}".format(output_path / (arff_file.stem + "_{}.csv".format(i)))
+            command += "\""  # Quotes necessary because of parentheses
+            print("Executing command: {}".format(command))
+            run(command, shell=True, check=True)
+
+    # Write the settings for the experiment
+    json_file = output_path / "settings.json"
+    settings = vars(args)
+    json_file.write_text(json.dumps(settings))
 
 
 if __name__ == '__main__':
     import sys
+
     main(sys.argv[1:])
