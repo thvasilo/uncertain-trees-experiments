@@ -28,10 +28,10 @@ def main(argv):
                                             "dir under datadir.")
     parser.add_argument("--ensemble-size", help="The size of the ensemble", type=int, default=10)
     parser.add_argument("--confidence", help="The confidence level of the predictions", type=float, default=0.9)
-    parser.add_argument("--fileoutput", default=False, action="store_true",
-                        help="When given, output results to file instead of only printing to stdout")
+    parser.add_argument("--stdout", default=False, action="store_true",
+                        help="When given, output results to stdout only instead of file")
     parser.add_argument("--overwrite", default=False, action="store_true",
-                        help="When given, it will overwrite results in the output folder")
+                        help="When given, it will not check if the output folder exists already.")
 
     args = parser.parse_args(argv)
 
@@ -54,8 +54,9 @@ def main(argv):
         base_learner = "(trees.FIMTDD -e)"
 
     # If the user did not provide an output dir, put results under the data folder
-    if args.outputdir is None:
+    if args.outputdir is None and not args.stdout:
         output_path = data_path / "results-MOA"
+        print("Will try to create directory {} to store the results".format(output_path))
     else:
         output_path = Path(args.outputdir)
 
@@ -74,7 +75,7 @@ def main(argv):
                                               "-f {interval}".format(task=task, learner=learner,
                                                                      arff_file=data_path / arff_file,
                                                                      interval=args.interval)
-            if args.fileoutput:
+            if not args.stdout:
                 command += " -d {}".format(output_path / (arff_file.stem + "_{}.csv".format(i)))
             command += "\""  # Quotes necessary because of parentheses
             print("Executing command: {}".format(command))
