@@ -1,5 +1,7 @@
+pandas
 scipy
 scikit-learn
 numpy
 liac-arff
 scikit-garden
+matplotlib
