@@ -16,8 +16,8 @@ params = {
    'legend.fontsize': 10,
    'xtick.labelsize': 10,
    'ytick.labelsize': 10,
-   'text.usetex': False, # Maybe change to Tex for final figures
-   'figure.figsize': [4.5, 4.5]
+   'text.usetex': False,  # Maybe change to Tex for final figures
+   'figure.figsize': [6, 6]
    }
 rcParams.update(params)
 
@@ -100,6 +100,7 @@ def main():
     input_path = Path(args.input)
     output_path = Path(args.output)
 
+    assert output_path.parent != input_path, "Setting output path under input can cause issues, choose another path."
     output_path.mkdir(parents=True, exist_ok=args.overwrite)
 
     # Get all the directories under the input path
@@ -124,11 +125,17 @@ def main():
     for method, ds_name_to_measure in method_ds_measure.items():
         ds_names.update(ds_name_to_measure.keys())
 
+    # All methods should have same x_axis, so just choose one
+    sample_method = list(method_to_dsname_to_result_df_list.keys())[0]
     # Create and save one figure per dataset
     for dataset in ds_names:
-        # From OnlineQRF, for this dataset, first experiment, get the index, as ints
-        # TODO: Remove hardcoded method name
-        x_axis = method_to_dsname_to_result_df_list["OnlineQRF"][dataset][0]["learning evaluation instances"].astype(int)
+        # From one of the methods, for this dataset, first experiment, get the index, as ints
+        try:
+            # If this doesn't work, we don't have MOA generated experiments
+            x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["learning evaluation instances"].astype(int)
+        except KeyError:
+            # In which case we should have only Python-generated experiments, which should have an index column
+            x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
         ax = plot_metric(method_ds_measure, dataset, x_axis, args.metric)
         plt.legend()
         outpath = Path(args.output) / (dataset + "-" + args.metric + ".pdf")
