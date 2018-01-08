@@ -2,7 +2,9 @@ from pathlib import Path
 import argparse
 from subprocess import run
 import json
+from collections import defaultdict
 
+from joblib import Parallel, delayed
 
 def main(argv):
     """
@@ -23,7 +25,9 @@ def main(argv):
                                               "to be used with meta.ConformalRegressor.")
     # parser.add_argument("--base", help="The base algorithm to use for training")
     parser.add_argument("--repeats", help="Number of times to repeat each experiment", type=int, default=1)
-    parser.add_argument("--interval", help="Performance report window size", type=int, default=1000)
+    parser.add_argument("--window", help="Performance report window size", type=int, default=1000)
+    parser.add_argument("--njobs", help="Number of experiment jobs to run in parallel, max one per input file", type=int, default=1)
+    parser.add_argument("--learner-threads", help="Number of threads to use for the learner", type=int, default=1)
     parser.add_argument("--outputdir", help="The directory to place the output files. If not given, creates "
                                             "dir under datadir.")
     parser.add_argument("--ensemble-size", help="The size of the ensemble", type=int, default=10)
@@ -37,7 +41,7 @@ def main(argv):
 
     # Tailor the command to each framework
 
-    task = "EvaluatePrequentialRegression -e (IntervalRegressionPerformanceEvaluator -w {})".format(args.interval)
+    task = "EvaluatePrequentialRegression -e (IntervalRegressionPerformanceEvaluator -w {})".format(args.window)
     moa_jar_path = Path(args.moajar)
     moa_dir = moa_jar_path.parent
     command_prefix = "java -cp \"{moa_jar}:{moa_dir}/dependency-jars/*\" " \
@@ -55,7 +59,7 @@ def main(argv):
 
     # If the user did not provide an output dir, put results under the data folder
     if args.outputdir is None and not args.stdout:
-        output_path = data_path / "results-MOA"
+        output_path = data_path / args.meta.split('.')[1]
         print("Will try to create directory {} to store the results".format(output_path))
     else:
         output_path = Path(args.outputdir)
@@ -65,26 +69,38 @@ def main(argv):
                       exist_ok=args.overwrite)
 
     # Run experiments for each data file
+    commands = []
+    commands_per_file = defaultdict(list)
     for arff_file in data_path.glob("*.arff"):
-        learner = "{meta} -l {base} -s {size} -a {confidence}".format(
+        learner = "{meta} -l {base} -s {size} -a {confidence} -j {threads}".format(
             meta=args.meta, base=base_learner, size=args.ensemble_size,
-            confidence=args.confidence)
+            confidence=args.confidence, threads=args.learner_threads)
         for i in range(args.repeats):
             command = command_prefix + "\"" + "{task} -l ({learner}) " \
                                               "-s (ArffFileStream -f {arff_file}) " \
-                                              "-f {interval}".format(task=task, learner=learner,
+                                              "-f {window}".format(task=task, learner=learner,
                                                                      arff_file=data_path / arff_file,
-                                                                     interval=args.interval)
+                                                                     window=args.window)
             if not args.stdout:
                 command += " -d {}".format(output_path / (arff_file.stem + "_{}.csv".format(i)))
             command += "\""  # Quotes necessary because of parentheses
-            print("Executing command: {}".format(command))
-            run(command, shell=True, check=True)
+            commands_per_file[arff_file].append(command)
+            commands.append(command)
+            # print("Executing command: {}".format(command))
+
+    # Parallelize over files, ensuring that there's only one process at any time reading the
+    # same file. Otherwise parallel performance is crap. If not enough files, compensate with
+    # learner_threads > 1
+    with Parallel(n_jobs=args.njobs) as parallel:
+        for i in range(args.repeats):
+            parallel(delayed(run)(commands[i], shell=True, check=True)
+                     for arff_file, commands in commands_per_file.items())
 
     # Write the settings for the experiment
     json_file = output_path / "settings.json"
     settings = vars(args)
     json_file.write_text(json.dumps(settings))
+    print("\nResults files created under {}".format(output_path))
 
 
 if __name__ == '__main__':
