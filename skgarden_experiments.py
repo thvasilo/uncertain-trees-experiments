@@ -80,7 +80,7 @@ def main():
 
     # Write experiment parameters to file
     results = {"arguments": vars(args), "learner_params": learner_params_list[0]}
-    out_file = output_path / "arguments.json"
+    out_file = output_path / "settings.json"
     out_file.write_text(json.dumps(results))
 
 
