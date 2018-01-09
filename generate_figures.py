@@ -89,8 +89,10 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name):
         mu = metric_df.mean()
         std_dev = metric_df.std()
         # Plot the line for the method and dataset
-        ax.errorbar(x_axis, mu, std_dev, label=method, marker=next(marker),
-                    capsize=3)
+        # ax.errorbar(x_axis, mu, std_dev, label=method, marker=next(marker),
+        #             capsize=3)
+        ax.plot(x_axis, mu, label=method, marker=next(marker))
+        ax.fill_between(x_axis, mu - std_dev, mu + std_dev, alpha=.25, linewidth=0)
     return ax
 
 
