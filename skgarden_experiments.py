@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 import json
+from time import perf_counter
 
 import arff
 import numpy as np
@@ -43,10 +44,11 @@ def parse_args():
                         help="Number of times to repeat each experiment")
     parser.add_argument("--overwrite", default=False, action="store_true",
                         help="When given, it will not check if the output folder exists already.")
-    parser.add_argument("--verbose", action="store_true", default=False,
-                        help="Provide additional output in the console")
+    parser.add_argument("--verbose", type=int, default=0,
+                        help="Provide additional output in the console, 1 for per experiment runtime, "
+                             "2 to include per-window output")
     parser.add_argument("--njobs", type=int, default=1,
-                        help="Number of experiments to run in parallel")
+                        help="Number of repeat experiments to run in parallel")
 
     return parser.parse_args()
 
@@ -72,8 +74,8 @@ def main():
     for filepath in data_path.glob("*.arff"):
         X, y = load_arff_data(filepath)
         print("Running experiments on {}".format(filepath.name))
-
-        with Parallel(n_jobs=args.njobs) as parallel:
+        # TODO: Nested parallelism, across files and repeats
+        with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
             learner_params_list = parallel(
                 delayed(run_experiment)(i, filepath, output_path, scorers, args, X, y)
                 for i in range(args.repeats))
@@ -84,12 +86,12 @@ def main():
     out_file.write_text(json.dumps(results))
 
 
-def run_experiment(i, filepath, output_path, scorers, args, X, y):
+def run_experiment(i, input_file, output_path, scorers, args, X, y):
     window_size = args.window_size
     print("Running repeat {}/{}".format(i + 1, args.repeats))
     # Create and evaluate an MF regressor
-    mfr = MondrianForestRegressor(n_estimators=args.n_estimators, verbose=args.verbose)
-    results = prequential_evaluation(mfr, X, y, scorers, args.window_size)
+    mfr = MondrianForestRegressor(n_estimators=args.n_estimators)
+    results = prequential_evaluation(mfr, X, y, scorers, args.window_size, verbose=args.verbose)
     results["learner_params"] = mfr.get_params()
 
     # Create index column
@@ -97,7 +99,7 @@ def run_experiment(i, filepath, output_path, scorers, args, X, y):
     for score in scorers.keys():
         assert num_windows == len(results[score])
     window_index_list = list(range(window_size, (window_size * num_windows), window_size))
-    # Last element of index is the dataset size, as MOA does
+    # Last element of index is the dataset size, consistent with MOA
     window_index_list.append(X.shape[0])
     results["index"] = window_index_list
 
@@ -106,7 +108,7 @@ def run_experiment(i, filepath, output_path, scorers, args, X, y):
     included_columns.add("index")
     # Create a df with only the score measurements and the index
     df = pd.DataFrame({k: results[k] for k in included_columns})
-    df.to_csv(output_path / (filepath.stem + "_{}.csv".format(i)), index=False)
+    df.to_csv(output_path / (input_file.stem + "_{}.csv".format(i)), index=False)
     return mfr.get_params()
 
 
