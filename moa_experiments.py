@@ -1,3 +1,11 @@
+"""
+Runs a number of experiments using MOA meta-learners.
+The user provides a datadir which contains a number of arff files for regression, and a MOA
+EvaluatePrequentialRegression(IntervalRegressionPerformanceEvaluator) task is run on each one.
+
+
+Usage: python moa_experiments.py --moajar /path/to/moa.jar --datadir /path/to/data --meta meta.OnlineQRF
+"""
 import argparse
 import json
 from collections import defaultdict
@@ -8,14 +16,6 @@ from joblib import Parallel, delayed
 
 
 def main(argv):
-    """
-    Runs a number of experiments using MOA meta-learners.
-    The user provides a datadir which contains a number of arff files for classification, and a MOA
-    EvaluatePrequentialRegression(IntervalRegressionPerformanceEvaluator) task is ran on each one.
-
-
-    Usage: python moa_experiments.py --moajar /path/to/moa.jar --datadir /path/to/data --meta meta.OnlineQRF
-    """
     parser = argparse.ArgumentParser(description="Runs MOA experiments and stores results into files")
     parser.add_argument("--moajar", help="Path to MOA jar", required=True)
     parser.add_argument("--datadir", help="A directory containing one or more arff data files", required=True)
@@ -39,6 +39,8 @@ def main(argv):
                         help="When given, output results to stdout only instead of file")
     parser.add_argument("--overwrite", default=False, action="store_true",
                         help="When given, it will not check if the output folder exists already.")
+    parser.add_argument("--save-predictions", default=False, action="store_true",
+                        help="When given, a file with intervals and true values will also be created.")
     # TODO: Other params I want to investigate?
 
     args = parser.parse_args(argv)
@@ -91,6 +93,8 @@ def main(argv):
                                                                    window=args.window)
             if not args.stdout:
                 command += " -d {}".format(output_path / (arff_file.stem + "_{}.csv".format(i)))
+                if args.save_predictions:
+                    command += " -o {}".format(output_path / (arff_file.stem + "_{}.pred".format(i)))
             command += "\""  # Quotes necessary because of parentheses
             commands_per_file[arff_file].append(command)
             commands.append(command)

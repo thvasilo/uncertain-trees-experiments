@@ -1,15 +1,21 @@
+"""
+Runs a number of experiments using skgarden MondrianForest.
+The user provides a datadir which contains a number of arff files for regression, and a
+prequential regression task is run on each one.
+
+
+Usage: python skgarden_experiments.py --data-folder path/to/data
+"""
 import argparse
 from pathlib import Path
 import json
-from time import perf_counter
 
 import arff
 import numpy as np
 from skgarden import MondrianForestRegressor
 import pandas as pd
 
-from scikit_online_eval.interval_metrics import IntervalScorer, mean_error_rate, mean_interval_size
-from scikit_online_eval.evaluation_functions import prequential_evaluation
+from evaluation_functions import mean_error_rate, mean_interval_size, prequential_interval_evaluation
 
 from joblib import Parallel, delayed
 
@@ -29,7 +35,7 @@ def load_arff_data(filepath):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-folder",
+    parser.add_argument("--data-folder", required=True,
                         help="Path to the folder containing the arff files.")
     parser.add_argument("--output", type=str,
                         help="Path to output folder. If not provided will create a dir named"
@@ -49,6 +55,8 @@ def parse_args():
                              "2 to include per-window output")
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of repeat experiments to run in parallel")
+    parser.add_argument("--save-predictions", default=False, action="store_true",
+                        help="When given, a file with intervals and true values will also be created.")
 
     return parser.parse_args()
 
@@ -63,13 +71,8 @@ def main():
     output_path.mkdir(parents=True, exist_ok=args.overwrite)
 
     # TODO: Other/customizable scorers?
-    interval_size_scorer = IntervalScorer(
-        mean_interval_size, {"confidence": args.confidence})
-    error_rate_scorer = IntervalScorer(
-        mean_error_rate, {"confidence": args.confidence})
-
-    scorers = {"mean interval size": interval_size_scorer,
-               "mean error rate": error_rate_scorer}
+    scorers = {"mean interval size": mean_interval_size,
+               "mean error rate": mean_error_rate}
 
     for filepath in data_path.glob("*.arff"):
         X, y = load_arff_data(filepath)
@@ -91,7 +94,12 @@ def run_experiment(i, input_file, output_path, scorers, args, X, y):
     print("Running repeat {}/{}".format(i + 1, args.repeats))
     # Create and evaluate an MF regressor
     mfr = MondrianForestRegressor(n_estimators=args.n_estimators)
-    results = prequential_evaluation(mfr, X, y, scorers, args.window_size, verbose=args.verbose)
+
+    # If asked to save predictions, create requisite file
+    pred_path = output_path / (input_file.stem + "_{}.pred".format(i)) if args.save_predictions else None
+
+    results = prequential_interval_evaluation(
+        mfr, X, y, args.confidence, scorers, args.window_size, verbose=args.verbose, prediction_output=pred_path)
     results["learner_params"] = mfr.get_params()
 
     # Create index column
