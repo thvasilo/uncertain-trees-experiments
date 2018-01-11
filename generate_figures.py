@@ -39,8 +39,6 @@ def parse_args():
                              "Sub-directory names will be used as method names in the plots.")
     parser.add_argument("--output",
                         help="The folder to create the output in")
-    parser.add_argument("--metric", choices=["mean error rate", "mean interval size"],
-                        help="The metric to plot, should correspond to csv output column names.")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
@@ -134,41 +132,43 @@ def main():
     for method_dir in method_dirs:
         method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
 
-    # Aggregate the list of result df to a single df per dataset, per method.
-    # Format: {method: {ds_name: measurements_df}}
-    # Each line in measurements_df is one experiment
-    method_ds_measure = {}
-    for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
-        # TODO: Make it possible to iterate over metrics?
-        method_ds_measure[method] = gather_metric(ds_to_measurements, args.metric)
+    for metric in ["mean error rate", "mean interval size"]:
+        # Aggregate the list of result df to a single df per dataset, per method.
+        # Format: {method: {ds_name: measurements_df}}
+        # Each line in measurements_df is one experiment
+        method_ds_measure = {}
+        for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
+            # TODO: Make it possible to iterate over metrics?
+            method_ds_measure[method] = gather_metric(ds_to_measurements, metric)
 
-    # Gather the names of datasets
-    ds_names = set()
-    for method, ds_name_to_measure in method_ds_measure.items():
-        ds_names.update(ds_name_to_measure.keys())
+        # Gather the names of datasets
+        ds_names = set()
+        for method, ds_name_to_measure in method_ds_measure.items():
+            ds_names.update(ds_name_to_measure.keys())
 
-    # All methods should have same x_axis, so just choose one
-    sample_method = list(method_to_dsname_to_result_df_list.keys())[0]
-    # Create and save one figure per dataset
-    for dataset in ds_names:
-        # From one of the methods, for this dataset, first experiment, get the index, as ints
-        try:
-            # If this doesn't work, we don't have MOA generated experiments
-            x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["learning evaluation instances"].astype(int)
-        except KeyError:
-            # In which case we should have only Python-generated experiments, which should have an index column
-            x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
-        except IndexError:
-            print("IndexError for dataset: {}".format(dataset))
-            continue
-        try:
-            ax = plot_metric(method_ds_measure, dataset, x_axis, args.metric)
-        except ValueError:
-            print("ValueError when trying to plot dataset: {}".format(dataset))
-            continue
-        plt.legend()
-        outpath = Path(args.output) / (dataset + "-" + args.metric + ".pdf")
-        plt.savefig(str(outpath))
+        # All methods should have same x_axis, so just choose one
+        sample_method = list(method_to_dsname_to_result_df_list.keys())[0]
+        # Create and save one figure per dataset
+
+        for dataset in ds_names:
+            # From one of the methods, for this dataset, first experiment, get the index, as ints
+            try:
+                # If this doesn't work, we don't have MOA generated experiments
+                x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["learning evaluation instances"].astype(int)
+            except KeyError:
+                # In which case we should have only Python-generated experiments, which should have an index column
+                x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
+            except IndexError:
+                print("IndexError for dataset: {}".format(dataset))
+                continue
+            try:
+                ax = plot_metric(method_ds_measure, dataset, x_axis, metric)
+            except ValueError:
+                print("ValueError when trying to plot dataset: {}".format(dataset))
+                continue
+            plt.legend()
+            outpath = Path(args.output) / (dataset + "-" + metric + ".pdf")
+            plt.savefig(str(outpath))
 
 
 if __name__ == "__main__":
