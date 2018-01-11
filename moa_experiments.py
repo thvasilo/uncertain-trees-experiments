@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--moajar", help="Path to MOA jar", required=True)
     parser.add_argument("--datadir", help="A directory containing one or more arff data files", required=True)
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
-                        choices=["meta.OnlineQRF", "meta.OoBConformalRegressor"])
+                        choices=["meta.OnlineQRF", "meta.OoBConformalRegressor", "meta.PredictiveVarianceRF"])
     parser.add_argument("--calibration-file", default="",
                         help="An arff file containing calibration instances, "
                              "to be used only with meta.ConformalRegressor.")
@@ -45,6 +45,8 @@ def main():
                         help="When given, a file with intervals and true values will also be created.")
     parser.add_argument("--measure-model-size", default=False, action="store_true",
                         help="When given, the size of the generated model will be reported in the results.")
+    parser.add_argument("--verbose", type=int, default=0,
+                        help="Set to 1 output per experiment, 2 to write MOA output to stdout.")
     # TODO: Other params I want to investigate?
 
     args = parser.parse_args()
@@ -107,7 +109,7 @@ def main():
     # Parallelize over files, ensuring that there's only one process at any time reading the
     # same file. Otherwise parallel performance is crap. If not enough files, compensate with
     # learner_threads > 1
-    with Parallel(n_jobs=args.njobs) as parallel:
+    with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
         for i in range(args.repeats):
             parallel(delayed(run)(commands[i], shell=True, check=True)
                      for arff_file, commands in commands_per_file.items())
