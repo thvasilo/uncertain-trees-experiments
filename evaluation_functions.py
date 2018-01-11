@@ -2,7 +2,7 @@ from collections import defaultdict
 from time import perf_counter
 
 import numpy as np
-
+from tqdm import trange
 
 # TODO: Since these break the "y_pred is a column vector convention", is there
 # any point in using them as sklearn metrics?
@@ -41,17 +41,21 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
     is reported.
 
     :param estimator: Has to support a partial_fit function
-    :param X: Features, numpy array
-    :param y: Labels, numpy column vector
+    :param X: numpy array
+        Feature data
+    :param y: numpy column vector
+        Labels
     :param confidence: float
-        The confidence level for the predictions, (0, 1.0).
+        The desired confidence level for the predictions, (0, 1.0).
     :param scoring: callable or dict
         If a callable, it should take y_true and y_predicted_interval (Numpy arrays) as arguments
         and return a scalar metric.
         dicts should have a mapping metric_name : callable (as above). can be used to report multiple
         metrics.
-    :param window_size: The size of the tumbling window, we average the metric(s) every x data points
-    :param verbose: If > 1 will print statistics per window
+    :param window_size: int
+        The size of the tumbling window, we average the metric(s) every x data points
+    :param verbose: int
+        If > 0 will display experiment progress bar. If > 1 will also print statistics per window.
     :param prediction_output: None or file-like object, that provides a write function.
         When not None, will write the prediction and interval estimates to the file.
     :return: List or dict
@@ -77,17 +81,17 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
     if prediction_output is not None:
         pred_file = prediction_output.open('w')
 
-    for i in range(n_samples):
+    for i in trange(n_samples, disable=(not verbose)):
         if i == 0:
             # sklearn does not allow prediction on an untrained model
             estimator.partial_fit(X[i, np.newaxis], y[i, np.newaxis])
         y_interval = estimator.predict_interval(X[i, np.newaxis], confidence=confidence)
         y_true = y[i, np.newaxis]
+        if pred_file is not None:
+            pred_file.write("{}, {}\n".format(y_interval.flatten(), y_true))
         if isinstance(scoring, dict):
             for score_name, score_func in scoring.items():
                 window_scores[score_name].append(score_func(y_true, y_interval))
-                if pred_file is not None:
-                    pred_file.write("{}, {}\n".format(y_interval.flatten(), y_true))
         else:
             window_scores.append(scoring(y_true, y_interval))
         if i == 0:

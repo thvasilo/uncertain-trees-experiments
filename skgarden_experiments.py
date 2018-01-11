@@ -3,6 +3,7 @@ Runs a number of experiments using skgarden MondrianForest.
 The user provides a datadir which contains a number of arff files for regression, and a
 prequential regression task is run on each one.
 
+The output is one csv file per dataset, per experiment repeat.
 
 Usage: python skgarden_experiments.py --data-folder path/to/data
 """
@@ -51,7 +52,7 @@ def parse_args():
     parser.add_argument("--overwrite", default=False, action="store_true",
                         help="When given, it will not check if the output folder exists already.")
     parser.add_argument("--verbose", type=int, default=0,
-                        help="Provide additional output in the console, 1 for per experiment runtime, "
+                        help="Provide additional output in the console, 1 for per experiment progress, "
                              "2 to include per-window output")
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of repeat experiments to run in parallel")

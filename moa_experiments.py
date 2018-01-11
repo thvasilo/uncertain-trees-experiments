@@ -3,6 +3,7 @@ Runs a number of experiments using MOA meta-learners.
 The user provides a datadir which contains a number of arff files for regression, and a MOA
 EvaluatePrequentialRegression(IntervalRegressionPerformanceEvaluator) task is run on each one.
 
+The output is one csv file per dataset, per experiment repeat.
 
 Usage: python moa_experiments.py --moajar /path/to/moa.jar --datadir /path/to/data --meta meta.OnlineQRF
 """
@@ -15,7 +16,7 @@ from subprocess import run
 from joblib import Parallel, delayed
 
 
-def main(argv):
+def main():
     parser = argparse.ArgumentParser(description="Runs MOA experiments and stores results into files")
     parser.add_argument("--moajar", help="Path to MOA jar", required=True)
     parser.add_argument("--datadir", help="A directory containing one or more arff data files", required=True)
@@ -27,7 +28,8 @@ def main(argv):
     # parser.add_argument("--base", help="The base algorithm to use for training")
     parser.add_argument("--repeats", help="Number of times to repeat each experiment", type=int, default=1)
     parser.add_argument("--window", help="Performance report window size", type=int, default=1000)
-    parser.add_argument("--njobs", help="Number of experiment jobs to run in parallel, max one per input file", type=int, default=1)
+    parser.add_argument("--njobs", type=int, default=1,
+                        help="Number of experiment jobs to run in parallel, max one per input file")
     parser.add_argument("--learner-threads", help="Number of threads to use for the learner", type=int, default=1)
     parser.add_argument("--outputdir", help="The directory to place the output files. If not given, creates "
                                             "dir under datadir.")
@@ -41,19 +43,21 @@ def main(argv):
                         help="When given, it will not check if the output folder exists already.")
     parser.add_argument("--save-predictions", default=False, action="store_true",
                         help="When given, a file with intervals and true values will also be created.")
+    parser.add_argument("--measure-model-size", default=False, action="store_true",
+                        help="When given, the size of the generated model will be reported in the results.")
     # TODO: Other params I want to investigate?
 
-    args = parser.parse_args(argv)
+    args = parser.parse_args()
 
     # Tailor the command to each framework
 
     task = "EvaluatePrequentialRegression -e (IntervalRegressionPerformanceEvaluator -w {})".format(args.window)
     moa_jar_path = Path(args.moajar)
     moa_dir = moa_jar_path.parent
-    # TODO: Remove the sizeofag to speed up experiment runtime? Only keep if we want actually investigate
-    command_prefix = "java -cp \"{moa_jar}:{moa_dir}/dependency-jars/*\" " \
-                     "-javaagent:{moa_dir}/dependency-jars/sizeofag-1.0.0.jar " \
-                     "moa.DoTask ".format(moa_dir=moa_dir, moa_jar=moa_jar_path)
+
+    command_prefix = "java -cp \"{moa_jar}:{moa_dir}/dependency-jars/*\" ".format(moa_dir=moa_dir, moa_jar=moa_jar_path)
+    if args.measure_model_size:
+        command_prefix += "-javaagent:{}/dependency-jars/sizeofag-1.0.0.jar ".format(moa_dir)
 
     # Set up input and output dirs
     data_path = Path(args.datadir)
@@ -86,7 +90,7 @@ def main(argv):
             learner += " -i {cal_size} -c {cal_file}".format(
                 cal_size=args.max_calibration_instances, cal_file=args.calibration_file)
         for i in range(args.repeats):
-            command = command_prefix + "\"" + "{task} -l ({learner}) " \
+            command = command_prefix + "moa.DoTask \" {task} -l ({learner}) " \
                                               "-s (ArffFileStream -f {arff_file}) " \
                                               "-f {window}".format(task=task, learner=learner,
                                                                    arff_file=data_path / arff_file,
@@ -116,6 +120,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    import sys
-
-    main(sys.argv[1:])
+    main()

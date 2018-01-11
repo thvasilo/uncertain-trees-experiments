@@ -1,3 +1,10 @@
+"""
+Creates figures for a specific metric from a directory containing subdirs of result csv files.
+Will aggregate all the results for every dataset, and plot its mean
+value along with its std across experiments.
+
+Used to plot the output from the skgarden_experiments and moa_experiments scripts.
+"""
 import argparse
 from collections import defaultdict
 from pathlib import Path
@@ -26,36 +33,47 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--input",
-                        help="A dir containing dis of results, one per method."
-                             "Sub-directory names will be used as method names in the plots")
+                        help="A dir containing sub-dirs of results, one per method."
+                             "The sub-dirs contain csv files with output, one per dataset, per"
+                             "experiment repeat."   
+                             "Sub-directory names will be used as method names in the plots.")
     parser.add_argument("--output",
                         help="The folder to create the output in")
-    parser.add_argument("--metric",
-                        help="The metric to plot, should correspond to csv output")
+    parser.add_argument("--metric", choices=["mean error rate", "mean interval size"],
+                        help="The metric to plot, should correspond to csv output column names.")
     parser.add_argument("--overwrite", action="store_true", default=False,
-                        help="When given, will not check if the output folder exists already.")
+                        help="When given, will not check if the output folder already exists ,"
+                             "potentially overwriting its contents.")
 
     return parser.parse_args()
 
 
 def gather_method_results(res_path: Path):
-    """Returns a dict from dataset name to a list of result dataframes"""
+    """ Reads csv files into lists of pandas dfs.
+    :param res_path: Path
+        A Path object to the location of the result csv's.
+        The expected filenames are formatted as dataset_name_X.csv,
+        where X is the experiment repeat number.
+    :return: A dict from dataset name to a list of result dataframes
+    """
     res = defaultdict(list)
     for res_file in res_path.glob("*.csv"):
-        base_name = res_file.name[:-6]
+        base_name = res_file.name[:-6]  # _X.csv is 6 characters
         res[base_name].append(pd.read_csv(res_file))
     return res
 
 
 def gather_metric(results_dict, metric):
     """
-    Returns a dict from dataset name to a df
-    containing the aggregated measurements for the requested metric
+    Returns a dict from dataset name to a df containing the aggregated
+    measurements for the requested metric.
     :param results_dict: {dataset_name: list_of_result_dataframes}
         The list has one dataframe per experiment, with all the metrics.
+        It corresponds to the output of gather_method_results().
     :param metric: String, name of metric (common across dataframes)
     :return: dict {dataset_name: dataframe_of_metric}
-        The df has one line per experiment
+        The df has one line per experiment, each column is the measurement
+        for one window.
     """
     dataset_to_metric = {}
     for ds_name, df_list in results_dict.items():
@@ -68,12 +86,14 @@ def gather_metric(results_dict, metric):
 
 def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name):
     """Returns an error-bar plot of the aggregated statistics (mean, var) for
-        a specific metric, for each method in the provided dict.
+       a specific dataset and metric, for each method in the provided dict.
     :param method_metric_dict: {method: {ds_name: measurements_df}}
         Maps each method to dataset names, each one with one aggregate
         measurements df.
+        The df has one line per experiment, each column is the measurement
+        for one window.
     :param dataset_name: The specific dataset name we want to plot.
-    :param x_axis: The x axis that corresponds to the y measurements.
+    :param x_axis: The x axis values tha correspond to the y measurements.
     :param metric_name: The name of the metric we are plotting
     :return: A matplotlib Axes object, containing the plotted figure (no legends)
     """
@@ -138,7 +158,14 @@ def main():
         except KeyError:
             # In which case we should have only Python-generated experiments, which should have an index column
             x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
-        ax = plot_metric(method_ds_measure, dataset, x_axis, args.metric)
+        except IndexError:
+            print("IndexError for dataset: {}".format(dataset))
+            continue
+        try:
+            ax = plot_metric(method_ds_measure, dataset, x_axis, args.metric)
+        except ValueError:
+            print("ValueError when trying to plot dataset: {}".format(dataset))
+            continue
         plt.legend()
         outpath = Path(args.output) / (dataset + "-" + args.metric + ".pdf")
         plt.savefig(str(outpath))
