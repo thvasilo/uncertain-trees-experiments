@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--moajar", help="Path to MOA jar", required=True)
     parser.add_argument("--datadir", help="A directory containing one or more arff data files", required=True)
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
-                        choices=["meta.OnlineQRF", "meta.OoBConformalRegressor", "meta.PredictiveVarianceRF"])
+                        choices=["OnlineQRF", "OoBConformalRegressor", "PredictiveVarianceRF"])
     parser.add_argument("--calibration-file", default="",
                         help="An arff file containing calibration instances, "
                              "to be used only with meta.ConformalRegressor.")
@@ -65,7 +65,7 @@ def main():
     data_path = Path(args.datadir)
 
     # TODO: Customization for base learner (buckets will be necessary)
-    if args.meta == "meta.OnlineQRF":
+    if args.meta == "OnlineQRF":
         base_learner = "(trees.FIMTQR -e)"
     else:
         base_learner = "(trees.FIMTDD -e)"
@@ -85,10 +85,10 @@ def main():
     commands = []
     commands_per_file = defaultdict(list)
     for arff_file in data_path.glob("*.arff"):
-        learner = "{meta} -l {base} -s {size} -a {confidence} -j {threads}".format(
+        learner = "meta.{meta} -l {base} -s {size} -a {confidence} -j {threads}".format(
             meta=args.meta, base=base_learner, size=args.ensemble_size,
             confidence=args.confidence, threads=args.learner_threads)
-        if args.meta != "meta.OnlineQRF":
+        if args.meta != "OnlineQRF":
             learner += " -i {cal_size} -c {cal_file}".format(
                 cal_size=args.max_calibration_instances, cal_file=args.calibration_file)
         for i in range(args.repeats):

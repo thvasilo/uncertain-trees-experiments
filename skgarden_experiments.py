@@ -75,6 +75,7 @@ def main():
     scorers = {"mean interval size": mean_interval_size,
                "mean error rate": mean_error_rate}
 
+    learner_params_list = None
     for filepath in data_path.glob("*.arff"):
         X, y = load_arff_data(filepath)
         print("Running experiments on {}".format(filepath.name))
@@ -85,6 +86,8 @@ def main():
                 for i in range(args.repeats))
 
     # Write experiment parameters to file
+    if learner_params_list is None:
+        raise Exception("No experiments performed, was the input dir correct?")
     results = {"arguments": vars(args), "learner_params": learner_params_list[0]}
     out_file = output_path / "settings.json"
     out_file.write_text(json.dumps(results))

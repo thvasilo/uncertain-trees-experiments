@@ -26,7 +26,7 @@ def parse_args():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--argument-list", nargs='+',
                        help="A list of arguments to run")
-    group.add_argument("--argument-range", nargs='3', type=float,
+    group.add_argument("--argument-range", nargs=3,
                        help="A string representation of an argument range, enter"
                             "\"start end step\" as in np.arange(start, end, step)")
 
@@ -39,10 +39,15 @@ def main():
     if args.argument_list is not None:
         sweep = args.argument_list
     else:
-        start, end, step = args.argument_range
+        # We use this trick to correctly parse ints or float from string, so
+        # that the meta-args end up with the correct type
+        from ast import literal_eval as le
+        range_args = [le(x) for x in args.argument_range]
+        start, end, step = range_args
         sweep = np.arange(start, end, step)
 
     for value in sweep:
+        value = str(value)
         outdir = Path(args.output_prefix) / value
         command = args.command + " --{arg} {val} --{out_arg} {outdir} ".format(
             arg=args.sweep_argument, val=value, outdir=outdir,
