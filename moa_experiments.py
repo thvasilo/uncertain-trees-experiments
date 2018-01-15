@@ -5,7 +5,7 @@ EvaluatePrequentialRegression(IntervalRegressionPerformanceEvaluator) task is ru
 
 The output is one csv file per dataset, per experiment repeat.
 
-Usage: python moa_experiments.py --moajar /path/to/moa.jar --datadir /path/to/data --meta meta.OnlineQRF
+Usage: python moa_experiments.py --moajar /path/to/moa.jar --datadir /path/to/data --meta OnlineQRF
 """
 import argparse
 import json
@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--ensemble-size", help="The size of the ensemble", type=int, default=10)
     parser.add_argument("--max-calibration-instances", type=int, default=1000,
                         help="The max size of the calibration set.")
+    parser.add_argument("--num-bins", type=int, default=100,
+                        help="Number of bins to use for each leaf histogram.")
     parser.add_argument("--confidence", help="The confidence level of the predictions", type=float, default=0.9)
     parser.add_argument("--stdout", default=False, action="store_true",
                         help="When given, output results to stdout only instead of file")
@@ -72,7 +74,7 @@ def main():
 
     # If the user did not provide an output dir, put results under the data folder
     if args.outputdir is None and not args.stdout:
-        output_path = data_path / args.meta.split('.')[1]
+        output_path = data_path / args.meta
         print("Will try to create directory {} to store the results".format(output_path))
     else:
         output_path = Path(args.outputdir)
@@ -91,6 +93,8 @@ def main():
         if args.meta != "OnlineQRF":
             learner += " -i {cal_size} -c {cal_file}".format(
                 cal_size=args.max_calibration_instances, cal_file=args.calibration_file)
+        else:
+            learner += " -b {}".format(args.num_bins)
         for i in range(args.repeats):
             command = command_prefix + "moa.DoTask \" {task} -l ({learner}) " \
                                               "-s (ArffFileStream -f {arff_file}) " \

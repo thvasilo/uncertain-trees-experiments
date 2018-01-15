@@ -17,16 +17,6 @@ from pylab import *
 plt.style.use(['seaborn-whitegrid'])
 
 rcParams = matplotlib.rcParams
-params = {
-   'axes.labelsize': 10,
-   'font.size': 10,
-   'legend.fontsize': 10,
-   'xtick.labelsize': 10,
-   'ytick.labelsize': 10,
-   'text.usetex': False,  # Maybe change to Tex for final figures
-   'figure.figsize': [6, 6]
-   }
-rcParams.update(params)
 
 
 def parse_args():
@@ -42,6 +32,8 @@ def parse_args():
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
+    parser.add_argument("--fig-height", type=int, default=6)
+    parser.add_argument("--fig-width", type=int, default=6)
 
     return parser.parse_args()
 
@@ -116,6 +108,17 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name):
 
 def main():
     args = parse_args()
+
+    params = {
+        'axes.labelsize': 10,
+        'font.size': 10,
+        'legend.fontsize': 10,
+        'xtick.labelsize': 10,
+        'ytick.labelsize': 10,
+        'text.usetex': False,  # Maybe change to Tex for final figures
+        'figure.figsize': [args.fig_width, args.fig_height]
+    }
+    rcParams.update(params)
 
     input_path = Path(args.input)
     output_path = Path(args.output)
