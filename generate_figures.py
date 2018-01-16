@@ -13,6 +13,7 @@ import itertools
 import matplotlib.pyplot as plt
 import pandas as pd
 from pylab import *
+from tabulate import tabulate
 
 plt.style.use(['seaborn-whitegrid'])
 
@@ -22,16 +23,19 @@ rcParams = matplotlib.rcParams
 def parse_args():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--input",
+    parser.add_argument("--input", required= True,
                         help="A dir containing sub-dirs of results, one per method."
                              "The sub-dirs contain csv files with output, one per dataset, per"
                              "experiment repeat."   
                              "Sub-directory names will be used as method names in the plots.")
-    parser.add_argument("--output",
+    parser.add_argument("--output", required= True,
                         help="The folder to create the output in")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
+    parser.add_argument("--create-tables", action="store_true", default=False,
+                        help="When given, will create a table with the mean values over"
+                             "all windows aggregated for each dataset")
     parser.add_argument("--fig-height", type=int, default=6)
     parser.add_argument("--fig-width", type=int, default=6)
 
@@ -106,6 +110,43 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name):
     return ax
 
 
+def create_metric_table(method_metric_dict, outpath):
+    """Creates a Latex booktabs table for a specific dataset and metric, for
+    each method in the provided dict as well as a csv representation,
+    and writes them both to disk.
+    :param method_metric_dict: {method: {ds_name: measurements_df}}
+        Maps each method to dataset names, each one with one aggregate
+        measurements df.
+        The df has one line per experiment, each column is the measurement
+        for one window.
+    :param outpath: Path
+        A Path object to the output tex file we will create.
+    """
+
+    method_to_measurements = {}
+    for method, ds_metric_dict in method_metric_dict.items():
+        ds_names = []
+        ds_means = []
+        # Get the measurements for the requested data, and calc their stats
+        for dataset_name, metric_df in ds_metric_dict.items():
+            window_mean = metric_df.mean()
+            overall_mean = window_mean.mean()
+            ds_names.append(dataset_name)
+            ds_means.append(overall_mean)
+
+        method_to_measurements[method] = ds_means
+
+    # TODO: Assert datasets are in correct order between methods
+
+    pd_dict = {"Dataset": ds_names}
+    pd_dict.update(method_to_measurements)
+    aggregate_metric_df = pd.DataFrame(pd_dict)
+    aggregate_metric_df.to_csv(outpath.with_suffix(".csv"), index=False)
+
+    table_str = tabulate(aggregate_metric_df, headers='keys', tablefmt='latex_booktabs', showindex=False)
+
+    outpath.with_suffix(".tex").write_text(table_str)
+
 def main():
     args = parse_args()
 
@@ -151,8 +192,12 @@ def main():
 
         # All methods should have same x_axis, so just choose one
         sample_method = list(method_to_dsname_to_result_df_list.keys())[0]
-        # Create and save one figure per dataset
 
+        if args.create_tables:
+            table_outpath = Path(args.output) / metric
+            create_metric_table(method_ds_measure, table_outpath)
+
+        # Create and save one figure per dataset
         for dataset in ds_names:
             # From one of the methods, for this dataset, first experiment, get the index, as ints
             try:
@@ -161,14 +206,7 @@ def main():
             except KeyError:
                 # In which case we should have only Python-generated experiments, which should have an index column
                 x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
-            except IndexError:
-                print("IndexError for dataset: {}".format(dataset))
-                continue
-            try:
-                ax = plot_metric(method_ds_measure, dataset, x_axis, metric)
-            except ValueError:
-                print("ValueError when trying to plot dataset: {}".format(dataset))
-                continue
+            ax = plot_metric(method_ds_measure, dataset, x_axis, metric)
             plt.legend()
             outpath = Path(args.output) / (dataset + "-" + metric + ".pdf")
             plt.savefig(str(outpath))
