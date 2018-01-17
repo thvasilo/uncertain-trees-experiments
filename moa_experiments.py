@@ -1,11 +1,11 @@
 """
 Runs a number of experiments using MOA meta-learners.
-The user provides a datadir which contains a number of arff files for regression, and a MOA
+The user provides an input which contains a number of arff files for regression, and a MOA
 EvaluatePrequentialRegression(IntervalRegressionPerformanceEvaluator) task is run on each one.
 
 The output is one csv file per dataset, per experiment repeat.
 
-Usage: python moa_experiments.py --moajar /path/to/moa.jar --datadir /path/to/data --meta OnlineQRF
+Usage: python moa_experiments.py --moajar /path/to/moa.jar --input /path/to/data --meta OnlineQRF
 """
 import argparse
 import json
@@ -19,7 +19,7 @@ from joblib import Parallel, delayed
 def main():
     parser = argparse.ArgumentParser(description="Runs MOA experiments and stores results into files")
     parser.add_argument("--moajar", help="Path to MOA jar", required=True)
-    parser.add_argument("--datadir", help="A directory containing one or more arff data files", required=True)
+    parser.add_argument("--input", help="A directory containing one or more arff data files", required=True)
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
                         choices=["OnlineQRF", "OoBConformalRegressor", "PredictiveVarianceRF"])
     parser.add_argument("--calibration-file", default="",
@@ -31,8 +31,8 @@ def main():
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of experiment jobs to run in parallel, max one per input file")
     parser.add_argument("--learner-threads", help="Number of threads to use for the learner", type=int, default=1)
-    parser.add_argument("--outputdir", help="The directory to place the output files. If not given, creates "
-                                            "dir under datadir.")
+    parser.add_argument("--output", help="The directory to place the output files. If not given, creates "
+                                            "dir under input.")
     parser.add_argument("--ensemble-size", help="The size of the ensemble", type=int, default=10)
     parser.add_argument("--max-calibration-instances", type=int, default=1000,
                         help="The max size of the calibration set.")
@@ -64,7 +64,7 @@ def main():
         command_prefix += "-javaagent:{}/dependency-jars/sizeofag-1.0.0.jar ".format(moa_dir)
 
     # Set up input and output dirs
-    data_path = Path(args.datadir)
+    data_path = Path(args.input)
 
     # TODO: Customization for base learner (buckets will be necessary)
     if args.meta == "OnlineQRF":
@@ -73,11 +73,11 @@ def main():
         base_learner = "(trees.FIMTDD -e)"
 
     # If the user did not provide an output dir, put results under the data folder
-    if args.outputdir is None and not args.stdout:
+    if args.output is None and not args.stdout:
         output_path = data_path / args.meta
         print("Will try to create directory {} to store the results".format(output_path))
     else:
-        output_path = Path(args.outputdir)
+        output_path = Path(args.output)
 
     # Create the output dir if needed
     output_path.mkdir(parents=True,
@@ -115,7 +115,7 @@ def main():
     # learner_threads > 1
     with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
         for i in range(args.repeats):
-            parallel(delayed(run)(commands[i], shell=True, check=True)
+            parallel(delayed(run)(commands[i], shell=True)
                      for arff_file, commands in commands_per_file.items())
 
     # Write the settings for the experiment

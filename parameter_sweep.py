@@ -20,8 +20,6 @@ def parse_args():
                         help="The argument to sweep on")
     parser.add_argument("--output-prefix", required=True,
                         help="The prefix for the output argument")
-    parser.add_argument("--output-argument", default="output",
-                        help="The name of the output argument")
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--argument-list", nargs='+',
@@ -49,11 +47,10 @@ def main():
     for value in sweep:
         value = str(value)
         outdir = Path(args.output_prefix) / value
-        command = args.command + " --{arg} {val} --{out_arg} {outdir} ".format(
-            arg=args.sweep_argument, val=value, outdir=outdir,
-            out_arg=args.output_argument)
+        command = args.command + " --{arg} {val} --output {outdir} ".format(
+            arg=args.sweep_argument, val=value, outdir=outdir)
         print("Running command:\n{}".format(command))
-        run(command, shell=True, check=True)
+        run(command, shell=True)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ prequential regression task is run on each one.
 
 The output is one csv file per dataset, per experiment repeat.
 
-Usage: python skgarden_experiments.py --data-folder path/to/data
+Usage: python skgarden_experiments.py --input path/to/data
 """
 import argparse
 from pathlib import Path
@@ -36,7 +36,7 @@ def load_arff_data(filepath):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data-folder", required=True,
+    parser.add_argument("--input", required=True,
                         help="Path to the folder containing the arff files.")
     parser.add_argument("--output", type=str,
                         help="Path to output folder. If not provided will create a dir named"
@@ -65,7 +65,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    data_path = Path(args.data_folder)
+    data_path = Path(args.input)
     if args.output is None:
         args.output = str(data_path / "MondrianForest")
     output_path = Path(args.output)
