@@ -21,7 +21,8 @@ def main():
     parser.add_argument("--moajar", help="Path to MOA jar", required=True)
     parser.add_argument("--input", help="A directory containing one or more arff data files", required=True)
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
-                        choices=["OnlineQRF", "OoBConformalRegressor", "PredictiveVarianceRF"])
+                        choices=["OnlineQRF", "OoBConformalRegressor", "PredictiveVarianceRF",
+                                 "OoBConformalApproximate"])
     parser.add_argument("--calibration-file", default="",
                         help="An arff file containing calibration instances, "
                              "to be used only with meta.ConformalRegressor.")

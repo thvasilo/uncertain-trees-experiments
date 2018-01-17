@@ -80,10 +80,13 @@ def main():
         X, y = load_arff_data(filepath)
         print("Running experiments on {}".format(filepath.name))
         # TODO: Nested parallelism, across files and repeats
-        with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
-            learner_params_list = parallel(
-                delayed(run_experiment)(i, filepath, output_path, scorers, args, X, y)
-                for i in range(args.repeats))
+        try:
+            with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
+                learner_params_list = parallel(
+                    delayed(run_experiment)(i, filepath, output_path, scorers, args, X, y)
+                    for i in range(args.repeats))
+        except:
+            "Runtime error for dataset: {}".format(filepath.name)
 
     # Write experiment parameters to file
     if learner_params_list is None:

@@ -124,28 +124,42 @@ def create_metric_table(method_metric_dict, outpath):
     """
 
     method_to_measurements = {}
+    method_to_std_measurements = {}
+    ds_names = []
     for method, ds_metric_dict in method_metric_dict.items():
-        ds_names = []
         ds_means = []
+        ds_stds = []
         # Get the measurements for the requested data, and calc their stats
         for dataset_name, metric_df in ds_metric_dict.items():
             window_mean = metric_df.mean()
+            window_std = metric_df.std()
             overall_mean = window_mean.mean()
+            overall_std = window_std.mean()
             ds_names.append(dataset_name)
             ds_means.append(overall_mean)
+            ds_stds.append(overall_std)
 
         method_to_measurements[method] = ds_means
+        method_to_std_measurements[method] = ds_stds
 
     # TODO: Assert datasets are in correct order between methods
 
     pd_dict = {"Dataset": ds_names}
     pd_dict.update(method_to_measurements)
     aggregate_metric_df = pd.DataFrame(pd_dict)
-    aggregate_metric_df.to_csv(outpath.with_suffix(".csv"), index=False)
+
+    std_pd_dict = {"Dataset": ds_names}
+    std_pd_dict.update(method_to_std_measurements)
+    std_aggregate_metric_df = pd.DataFrame(std_pd_dict)
+
+    aggregate_metric_df.to_csv(outpath.with_suffix("_means.csv"), index=False)
+    std_aggregate_metric_df.to_csv(outpath.with_suffix("_stds.csv"), index=False)
 
     table_str = tabulate(aggregate_metric_df, headers='keys', tablefmt='latex_booktabs', showindex=False)
+    std_table_str = tabulate(std_aggregate_metric_df, headers='keys', tablefmt='latex_booktabs', showindex=False)
 
     outpath.with_suffix(".tex").write_text(table_str)
+    outpath.with_suffix(".tex").write_text(std_table_str)
 
 def main():
     args = parse_args()
