@@ -6,7 +6,7 @@ value along with its std across experiments.
 Used to plot the output from the skgarden_experiments and moa_experiments scripts.
 """
 import argparse
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from pathlib import Path
 import itertools
 
@@ -36,8 +36,15 @@ def parse_args():
     parser.add_argument("--create-tables", action="store_true", default=False,
                         help="When given, will create a table with the mean values over"
                              "all windows aggregated for each dataset")
+    parser.add_argument("--expected-error", default=0.1,
+                        help="The expected error level for the experiment.")
     parser.add_argument("--fig-height", type=int, default=6)
     parser.add_argument("--fig-width", type=int, default=6)
+    alg_selection = parser.add_mutually_exclusive_group()
+    alg_selection.add_argument("--include-only", nargs='+',
+                               help=" Include only the provided output directories")
+    alg_selection.add_argument("--exclude", nargs='+',
+                               help=" Exclude the provided output directories")
 
     return parser.parse_args()
 
@@ -110,10 +117,11 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name):
     return ax
 
 
-def create_metric_table(method_metric_dict, outpath):
+def create_tables(method_metric_dict, outpath):
     """Creates a Latex booktabs table for a specific dataset and metric, for
     each method in the provided dict as well as a csv representation,
-    and writes them both to disk.
+    and writes them both to disk. The metrics are aggregated over windows,
+    and their mean and stddev are written to disk.
     :param method_metric_dict: {method: {ds_name: measurements_df}}
         Maps each method to dataset names, each one with one aggregate
         measurements df.
@@ -123,43 +131,66 @@ def create_metric_table(method_metric_dict, outpath):
         A Path object to the output tex file we will create.
     """
 
-    method_to_measurements = {}
-    method_to_std_measurements = {}
-    ds_names = []
+    mean_method_to_measurements = {}
+    std_method_to_measurements = {}
+    median_method_to_measurements = {}
+
+    all_names = []
     for method, ds_metric_dict in method_metric_dict.items():
+        ds_names = []
         ds_means = []
+        ds_medians = []
         ds_stds = []
         # Get the measurements for the requested data, and calc their stats
-        for dataset_name, metric_df in ds_metric_dict.items():
+        for dataset_name, metric_df in sorted(ds_metric_dict.items()):
             window_mean = metric_df.mean()
             window_std = metric_df.std()
             overall_mean = window_mean.mean()
+            overall_median = window_mean.median()
             overall_std = window_std.mean()
             ds_names.append(dataset_name)
             ds_means.append(overall_mean)
+            ds_medians.append(overall_median)
             ds_stds.append(overall_std)
 
-        method_to_measurements[method] = ds_means
-        method_to_std_measurements[method] = ds_stds
+        all_names.append(ds_names)
+        mean_method_to_measurements[method] = ds_means
+        median_method_to_measurements[method] = ds_medians
+        std_method_to_measurements[method] = ds_stds
 
     # TODO: Assert datasets are in correct order between methods
+    prev_names = []
+    for ds_names in all_names:
+        if len(prev_names) == 0:
+            prev_names = ds_names
+            continue
+        for left_name, right_name in zip(prev_names, ds_names):
+            assert left_name == right_name, "DS order mismatch: {}, {}".format(left_name, right_name)
 
-    pd_dict = {"Dataset": ds_names}
-    pd_dict.update(method_to_measurements)
-    aggregate_metric_df = pd.DataFrame(pd_dict)
+    def create_df(method_to_measurements_dict):
+        dictionary = {"Dataset": ds_names}
+        dictionary.update(method_to_measurements_dict)
+        return pd.DataFrame(dictionary)
 
-    std_pd_dict = {"Dataset": ds_names}
-    std_pd_dict.update(method_to_std_measurements)
-    std_aggregate_metric_df = pd.DataFrame(std_pd_dict)
+    mean_aggregate_metric_df = create_df(mean_method_to_measurements)
+    std_aggregate_metric_df = create_df(std_method_to_measurements)
+    median_aggregate_metric_df = create_df(median_method_to_measurements)
 
-    aggregate_metric_df.to_csv(outpath.with_suffix("_means.csv"), index=False)
-    std_aggregate_metric_df.to_csv(outpath.with_suffix("_stds.csv"), index=False)
+    mean_aggregate_metric_df.to_csv(outpath.with_suffix(".means.csv"), index=False)
+    std_aggregate_metric_df.to_csv(outpath.with_suffix(".stds.csv"), index=False)
+    median_aggregate_metric_df.to_csv(outpath.with_suffix(".medians.csv"), index=False)
 
-    table_str = tabulate(aggregate_metric_df, headers='keys', tablefmt='latex_booktabs', showindex=False)
-    std_table_str = tabulate(std_aggregate_metric_df, headers='keys', tablefmt='latex_booktabs', showindex=False)
+    def create_table_str(df):
+        return tabulate(df, headers='keys', tablefmt='latex_booktabs', showindex=False, floatfmt=".3f")
 
-    outpath.with_suffix(".tex").write_text(table_str)
-    outpath.with_suffix(".tex").write_text(std_table_str)
+    table_str = create_table_str(mean_aggregate_metric_df)
+    std_table_str = create_table_str(std_aggregate_metric_df)
+    median_table_str = create_table_str(median_aggregate_metric_df)
+
+    outpath.with_suffix(".means.tex").write_text(table_str)
+    outpath.with_suffix(".stds.tex").write_text(std_table_str)
+    outpath.with_suffix(".medians.tex").write_text(median_table_str)
+
 
 def main():
     args = parse_args()
@@ -183,6 +214,10 @@ def main():
 
     # Get all the directories under the input path
     method_dirs = [subpath for subpath in input_path.iterdir() if subpath.is_dir()]
+    if args.exclude is not None:
+        method_dirs = [subpath for subpath in method_dirs if subpath.name not in args.exclude]
+    elif args.include_only is not None:
+        method_dirs = [subpath for subpath in method_dirs if subpath.name in args.include_only]
 
     # Gather the results for each method
     # Format: {method: {ds_name: measurement_df_list}}
@@ -194,8 +229,8 @@ def main():
         # Aggregate the list of result df to a single df per dataset, per method.
         # Format: {method: {ds_name: measurements_df}}
         # Each line in measurements_df is one experiment
-        method_ds_measure = {}
-        for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
+        method_ds_measure = OrderedDict()
+        for method, ds_to_measurements in sorted(method_to_dsname_to_result_df_list.items()):
             # TODO: Make it possible to iterate over metrics?
             method_ds_measure[method] = gather_metric(ds_to_measurements, metric)
 
@@ -208,8 +243,8 @@ def main():
         sample_method = list(method_to_dsname_to_result_df_list.keys())[0]
 
         if args.create_tables:
-            table_outpath = Path(args.output) / metric
-            create_metric_table(method_ds_measure, table_outpath)
+            table_outpath = Path(args.output) / metric.replace(' ', '_')
+            create_tables(method_ds_measure, table_outpath)
 
         # Create and save one figure per dataset
         for dataset in ds_names:
@@ -221,8 +256,10 @@ def main():
                 # In which case we should have only Python-generated experiments, which should have an index column
                 x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
             ax = plot_metric(method_ds_measure, dataset, x_axis, metric)
+            if metric == "mean error rate":
+                ax.axhline(y=args.expected_error, linestyle='dashed', color='grey')
             plt.legend()
-            outpath = Path(args.output) / (dataset + "-" + metric + ".pdf")
+            outpath = Path(args.output) / (dataset + "-" + metric.replace(' ', '_') + ".pdf")
             plt.savefig(str(outpath))
 
 

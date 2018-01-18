@@ -23,7 +23,7 @@ from joblib import Parallel, delayed
 
 def load_arff_data(filepath):
 
-    with open(filepath, 'r') as f:
+    with open(str(filepath), 'r') as f:
         decoder = arff.ArffDecoder()
         d = decoder.decode(f, encode_nominal=True)
     # tvas: We are assuming the target/dependent is the last column
