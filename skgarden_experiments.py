@@ -97,6 +97,7 @@ def main():
 
 
 def run_experiment(i, input_file, output_path, scorers, args, X, y):
+    np.random.seed()
     window_size = args.window_size
     print("Running repeat {}/{}".format(i + 1, args.repeats))
     # Create and evaluate an MF regressor
