@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 from time import perf_counter
 
@@ -78,9 +79,13 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
     total_windows = int(np.ceil(n_samples / window_size))
     window_start = perf_counter()
     pred_file = None
+    timings_file = None
     if prediction_output is not None:
         pred_file = prediction_output.open('w')
+        timings_file = prediction_output.with_suffix(".time.csv").open('w')
+        timings_file.write("instance,window_duration-sec,total_duration-sec\n")
 
+    total_duration = 0
     for i in trange(n_samples, disable=(not verbose)):
         if i == 0:
             # sklearn does not allow prediction on an untrained model
@@ -118,14 +123,19 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
                         window_count, total_windows, window_sum / len(test_scores)))
             window_scores.clear()
             window_elements = 0
+            window_end = perf_counter()
+            window_duration = window_end - window_start
+            total_duration += window_duration
+            if timings_file is not None:
+                timings_file.write("{},{},{}\n".format(i, window_duration, total_duration))
             if verbose > 1:
-                window_end = perf_counter()
-                window_duration = window_end - window_start
                 print("Time to process window: {} sec".format(window_duration))
-                window_start = perf_counter()
+            window_start = perf_counter()
+
         estimator.partial_fit(X[i, np.newaxis], y[i, np.newaxis])
 
     if pred_file is not None:
         pred_file.close()
+        timings_file.close()
 
     return test_scores
