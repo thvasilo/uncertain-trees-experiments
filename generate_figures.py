@@ -14,11 +14,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pylab import *
 from tabulate import tabulate
+from natsort import natsorted
 
 plt.style.use(['seaborn-whitegrid'])
 
 rcParams = matplotlib.rcParams
 
+METHOD_RENAMES = {"OoBConformalApproximate": "CPApproximate", "OoBConformalRegressor": "CPExact",
+                  "MondrianForest": "MondrianForest", "PredictiveVarianceRF": "PredictiveVarianceRF",
+                  "OnlineQRF": "OnlineQRF"}
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -33,13 +37,17 @@ def parse_args():
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
-    parser.add_argument("--create-tables", action="store_false", default=False,
+    parser.add_argument("--create-tables", action="store_true", default=False,
                         help="When given, will create a table with the mean values over"
                              "all windows aggregated for each dataset")
-    parser.add_argument("--dont-create-figures", action="store_false", default=False,
+    parser.add_argument("--dont-create-figures", action="store_true", default=False,
                         help="When given, will not generate figures.")
+    parser.add_argument("--use-tex", action="store_true", default=False,
+                        help="When given, will use the Tex engine to create tex for the figures (slower)")
     parser.add_argument("--expected-error", default=0.1,
                         help="The expected error level for the experiment.")
+    parser.add_argument("--mark-every", default=1,
+                        help="Place a marker on the figures every this many data points.")
     parser.add_argument("--fig-height", type=int, default=6)
     parser.add_argument("--fig-width", type=int, default=6)
     alg_selection = parser.add_mutually_exclusive_group()
@@ -61,8 +69,11 @@ def gather_method_results(res_path: Path):
     """
     res = defaultdict(list)
     for res_file in res_path.glob("*.csv"):
+        if res_file.match("*.time.csv") or res_file.match("*.pred.csv"):  # Avoid parsing time/pred files
+            continue
         base_name = res_file.name[:-6]  # _X.csv is 6 characters
-        res[base_name].append(pd.read_csv(res_file))
+        df = pd.read_csv(res_file)
+        res[base_name].append(df)
     return res
 
 
@@ -87,7 +98,7 @@ def gather_metric(results_dict, metric):
     return dataset_to_metric
 
 
-def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name):
+def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery):
     """Returns an error-bar plot of the aggregated statistics (mean, var) for
        a specific dataset and metric, for each method in the provided dict.
     :param method_metric_dict: {method: {ds_name: measurements_df}}
@@ -115,10 +126,15 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name):
         # ax.errorbar(x_axis, mu, std_dev, label=method, marker=next(marker),
         #             capsize=3)
         # TODO: The order of the methods changes as a result of the renaming. Decide on one and be consistent.
-        # ax.plot(x_axis, mu, label=METHOD_RENAMES[method], marker=next(marker), markevery=5)
-        ax.plot(x_axis, mu, label=method, marker=next(marker))
+        ax.plot(x_axis, mu, label=METHOD_RENAMES[method], marker=next(marker), markevery=markevery)
         ax.fill_between(x_axis, mu - std_dev, mu + std_dev, alpha=.25, linewidth=0)
     return ax
+
+
+def sort_nicely(l):
+    """ Sort the given list of Path objects in the way that humans expect.
+    """
+    return sorted(l, key=lambda x: int(x.name) if x.name.isdigit() else x.name)
 
 
 def create_tables(method_metric_dict, outpath, expected_error):
@@ -133,12 +149,13 @@ def create_tables(method_metric_dict, outpath, expected_error):
         for one window.
     :param outpath: Path
         A Path object to the output tex file we will create.
+    :param expected_error: float
+        The expected error rate
     """
-
-    mean_method_to_measurements = {}
-    std_method_to_measurements = {}
-    median_method_to_measurements = {}
-    mean_deviation_method_to_measurements = {}
+    mean_method_to_measurements = OrderedDict()
+    std_method_to_measurements = OrderedDict()
+    median_method_to_measurements = OrderedDict()
+    mean_deviation_method_to_measurements = OrderedDict()
 
     all_names = []
     for method, ds_metric_dict in method_metric_dict.items():
@@ -148,7 +165,7 @@ def create_tables(method_metric_dict, outpath, expected_error):
         ds_stds = []
         ds_deviation_means = []
         # Get the measurements for the requested data, and calc their stats
-        for dataset_name, metric_df in sorted(ds_metric_dict.items()):
+        for dataset_name, metric_df in natsorted(ds_metric_dict.items()):
             window_mean = metric_df.mean()
             window_std = metric_df.std()
             mean_window_deviation = abs(window_mean - expected_error).mean()
@@ -190,10 +207,15 @@ def create_tables(method_metric_dict, outpath, expected_error):
                 "DS order mismatch: {}, {}".format(left_name, right_name)
 
     def create_df(method_to_measurements_dict):
-        dictionary = {"Dataset": ds_names}
+        dictionary = OrderedDict()
+        dictionary["Dataset"] = ds_names
         dictionary.update(method_to_measurements_dict)
         df = pd.DataFrame(dictionary)
-        return df.set_index("Dataset")
+        df = df.set_index("Dataset")
+        df.loc['Mean'] = df.mean()
+        df.loc['Median'] = df.median()
+        df.loc['Std'] = df.std()
+        return df
 
     mean_aggregate_metric_df = create_df(mean_method_to_measurements)
     std_aggregate_metric_df = create_df(std_method_to_measurements)
@@ -217,8 +239,6 @@ def create_tables(method_metric_dict, outpath, expected_error):
 
     if outpath.name == "mean_error_rate":
         mean_deviation_df = create_df(mean_deviation_method_to_measurements)
-        mean_deviation_df.loc['Mean'] = mean_deviation_df.mean()
-        mean_deviation_df.loc['Std'] = mean_deviation_df.std()
         mean_deviation_df.to_csv(outpath.with_suffix(".deviations.csv"))
         mean_deviation_table_str = create_table_str(mean_deviation_df)
         outpath.with_suffix(".deviations.tex").write_text(mean_deviation_table_str)
@@ -233,7 +253,7 @@ def main():
         'legend.fontsize': 12,
         'xtick.labelsize': 12,
         'ytick.labelsize': 12,
-        'text.usetex': False,  # Maybe change to Tex for final figures
+        'text.usetex': args.use_tex,
         'figure.figsize': [args.fig_width, args.fig_height]
     }
     rcParams.update(params)
@@ -253,8 +273,9 @@ def main():
 
     # Gather the results for each method
     # Format: {method: {ds_name: measurement_df_list}}
-    method_to_dsname_to_result_df_list = {}
-    for method_dir in method_dirs:
+    method_to_dsname_to_result_df_list = OrderedDict()
+    sorted_dirs = sort_nicely(method_dirs)
+    for method_dir in sorted_dirs:
         method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
 
     for metric in ["mean error rate", "mean interval size"]:
@@ -262,7 +283,7 @@ def main():
         # Format: {method: {ds_name: measurements_df}}
         # Each line in measurements_df is one experiment
         method_ds_metric = OrderedDict()
-        for method, ds_to_measurements in sorted(method_to_dsname_to_result_df_list.items()):
+        for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
             # TODO: Make it possible to iterate over metrics?
             method_ds_metric[method] = gather_metric(ds_to_measurements, metric)
 
@@ -289,12 +310,12 @@ def main():
             except KeyError:
                 # In which case we should have only Python-generated experiments, which should have an index column
                 x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
-            ax = plot_metric(method_ds_metric, dataset, x_axis, metric)
+            ax = plot_metric(method_ds_metric, dataset, x_axis, metric, args.mark_every)
             if metric == "mean error rate":
                 ax.axhline(y=args.expected_error, linestyle='dashed', color='grey')
             plt.legend()
             outpath = Path(args.output) / (dataset + "-" + metric.replace(' ', '_') + ".pdf")
-            plt.savefig(str(outpath))
+            plt.savefig(str(outpath), bbox_inches='tight')
 
 
 if __name__ == "__main__":
