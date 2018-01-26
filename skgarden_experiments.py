@@ -56,8 +56,8 @@ def parse_args():
                              "2 to include per-window output")
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of repeat experiments to run in parallel")
-    parser.add_argument("--save-predictions", default=False, action="store_true",
-                        help="When given, a file with intervals and true values will also be created.")
+    parser.add_argument("--dont-save-predictions", default=False, action="store_true",
+                        help="When given, will no create predictions file.")
 
     return parser.parse_args()
 
@@ -104,7 +104,7 @@ def run_experiment(i, input_file, output_path, scorers, args, X, y):
     mfr = MondrianForestRegressor(n_estimators=args.n_estimators)
 
     # If asked to save predictions, create requisite file
-    pred_path = output_path / (input_file.stem + "_{}.pred".format(i)) if args.save_predictions else None
+    pred_path = output_path / (input_file.stem + "_{}.pred".format(i)) if not args.dont_save_predictions else None
 
     results = prequential_interval_evaluation(
         mfr, X, y, args.confidence, scorers, args.window_size, verbose=args.verbose, prediction_output=pred_path)

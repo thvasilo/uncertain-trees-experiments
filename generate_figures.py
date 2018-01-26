@@ -24,6 +24,7 @@ METHOD_RENAMES = {"OoBConformalApproximate": "CPApproximate", "OoBConformalRegre
                   "MondrianForest": "MondrianForest", "PredictiveVarianceRF": "PredictiveVarianceRF",
                   "OnlineQRF": "OnlineQRF"}
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -37,9 +38,8 @@ def parse_args():
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
-    parser.add_argument("--create-tables", action="store_true", default=False,
-                        help="When given, will create a table with the mean values over"
-                             "all windows aggregated for each dataset")
+    parser.add_argument("--dont-create-tables", action="store_true", default=False,
+                        help="When given, will not create table files")
     parser.add_argument("--dont-create-figures", action="store_true", default=False,
                         help="When given, will not generate figures.")
     parser.add_argument("--use-tex", action="store_true", default=False,
@@ -295,7 +295,7 @@ def main():
         # All methods should have same x_axis, so just choose one
         sample_method = list(method_to_dsname_to_result_df_list.keys())[0]
 
-        if args.create_tables:
+        if not args.dont_create_tables:
             table_outpath = Path(args.output) / metric.replace(' ', '_')
             create_tables(method_ds_metric, table_outpath, args.expected_error)
 

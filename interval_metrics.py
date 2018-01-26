@@ -107,7 +107,9 @@ def parse_args():
     alg_selection.add_argument("--exclude", nargs='+',
                                help=" Exclude the provided output directories")
     parser.add_argument("--force-moa", action="store_true", default=False,
-                        help=" Exclude the provided output directories")
+                        help="Enforce parsing of the dirs using the MOA format."
+                             "Use when directory names don't match a method name (e.g. OnlineQRF),"
+                             "MondrianForest parsing is used as the default in that case.")
 
     return parser.parse_args()
 
@@ -130,12 +132,12 @@ def main():
 
     # Check if prediction file pre-processing has been done, otherwise do it
 
-
     # Gather the results for each method
     # Format: {method: {ds_name: measurement_df_list}}
     method_to_dsname_to_result_df_list = OrderedDict()
     sorted_dirs = sort_nicely(method_dirs)
     for method_dir in sorted_dirs:
+        # TODO: Have proper check that each result_X.csv file has respective result_X.pred
         if len(list(method_dir.glob("*.pred"))) == 0:
             raise FileNotFoundError("No prediction files found in {}!".format(method_dir))
         if len(list(method_dir.glob("*.pred.csv"))) != len(list(method_dir.glob("*.pred"))):
@@ -232,8 +234,6 @@ def main():
         table_outpath.with_suffix(".means.tex").write_text(mean_table_str)
         table_outpath.with_suffix(".medians.tex").write_text(median_table_str)
         table_outpath.with_suffix(".stds.tex").write_text(std_table_str)
-
-    print("End.")
 
 
 if __name__ == '__main__':

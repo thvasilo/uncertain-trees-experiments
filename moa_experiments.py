@@ -44,10 +44,10 @@ def main():
                         help="When given, output results to stdout only instead of file")
     parser.add_argument("--overwrite", default=False, action="store_true",
                         help="When given, it will not check if the output folder exists already.")
-    parser.add_argument("--save-predictions", default=False, action="store_true",
-                        help="When given, a file with intervals and true values will also be created.")
-    parser.add_argument("--measure-model-size", default=False, action="store_true",
-                        help="When given, the size of the generated model will be reported in the results.")
+    parser.add_argument("--dont-save-predictions", default=False, action="store_true",
+                        help="When given, will not create file with predictions.")
+    parser.add_argument("--dont-measure-model-size", default=False, action="store_true",
+                        help="When given, will not report the size of the model in the results.")
     parser.add_argument("--verbose", type=int, default=0,
                         help="Set to 1 output per experiment, 2 to write MOA output to stdout.")
     # TODO: Other params I want to investigate?
@@ -61,7 +61,7 @@ def main():
     moa_dir = moa_jar_path.parent
 
     command_prefix = "java -cp \"{moa_jar}:{moa_dir}/dependency-jars/*\" ".format(moa_dir=moa_dir, moa_jar=moa_jar_path)
-    if args.measure_model_size:
+    if not args.dont_measure_model_size:
         command_prefix += "-javaagent:{}/dependency-jars/sizeofag-1.0.0.jar ".format(moa_dir)
 
     # Set up input and output dirs
@@ -104,7 +104,7 @@ def main():
                                                                    window=args.window)
             if not args.stdout:
                 command += " -d {}".format(output_path / (arff_file.stem + "_{}.csv".format(i)))
-                if args.save_predictions:
+                if not args.dont_save_predictions:
                     command += " -o {}".format(output_path / (arff_file.stem + "_{}.pred".format(i)))
             command += "\""  # Quotes necessary because of parentheses
             commands_per_file[arff_file].append(command)
@@ -114,8 +114,11 @@ def main():
     # Parallelize over files, ensuring that there's only one process at any time reading the
     # same file. Otherwise parallel performance is crap. If not enough files, compensate with
     # learner_threads > 1
+    # TODO: This is horrible job separation, long-running jobs are holding back the rest
+    # at each repeat iteration. Figure out different way.
     with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
         for i in range(args.repeats):
+            print("Running repeat {}/{}".format(i+1, args.repeats))
             parallel(delayed(run)(commands[i], shell=True)
                      for arff_file, commands in commands_per_file.items())
 
