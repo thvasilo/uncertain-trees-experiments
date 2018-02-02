@@ -23,17 +23,13 @@ def main():
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
                         choices=["OnlineQRF", "OoBConformalRegressor", "PredictiveVarianceRF",
                                  "OoBConformalApproximate"])
-    parser.add_argument("--calibration-file", default="",
-                        help="An arff file containing calibration instances, "
-                             "to be used only with meta.ConformalRegressor.")
-    # parser.add_argument("--base", help="The base algorithm to use for training")
     parser.add_argument("--repeats", help="Number of times to repeat each experiment", type=int, default=1)
     parser.add_argument("--window", help="Performance report window size", type=int, default=1000)
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of experiment jobs to run in parallel, max one per input file")
     parser.add_argument("--learner-threads", help="Number of threads to use for the learner", type=int, default=1)
     parser.add_argument("--output", help="The directory to place the output files. If not given, creates "
-                                            "dir under input.")
+                                         "directory under input, using the meta learner name.")
     parser.add_argument("--ensemble-size", help="The size of the ensemble", type=int, default=10)
     parser.add_argument("--max-calibration-instances", type=int, default=1000,
                         help="The max size of the calibration set.")

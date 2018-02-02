@@ -163,12 +163,13 @@ def main():
             for dataset_name, metric_df in natsorted(ds_name_to_measurements .items()):
                 if metric == "correct":
                     relative_interval_sums = metric_df.sum(axis=1)  # Mean for each example over repeats
-                    counts = metric_df.count(axis=1)
+                    non_na_counts = metric_df.count(axis=1)
                     # Correctness is metric that tries to measure how good a method is, by multiplying its
                     # relative intervals by the number of mistakes it does.
                     # So methods that are correct often but have relatively large intervals should fare
                     # better than methods that have small intervals, but are incorrect often.
-                    correctness = relative_interval_sums / (counts / metric_df.shape[1])
+                    # correctness = relative_interval_sums / (counts / metric_df.shape[1])
+                    correctness = non_na_counts / metric_df.shape[1]
                     overall_mean = correctness.mean()
                     overall_median_mean = correctness.median()
                     overall_std_mean = correctness.std()

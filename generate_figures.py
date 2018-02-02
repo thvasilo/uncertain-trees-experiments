@@ -46,7 +46,7 @@ def parse_args():
                         help="When given, will use the Tex engine to create tex for the figures (slower)")
     parser.add_argument("--expected-error", default=0.1,
                         help="The expected error level for the experiment.")
-    parser.add_argument("--mark-every", default=1,
+    parser.add_argument("--mark-every", default=1, type=int,
                         help="Place a marker on the figures every this many data points.")
     parser.add_argument("--fig-height", type=int, default=6)
     parser.add_argument("--fig-width", type=int, default=6)
@@ -109,6 +109,8 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery
     :param dataset_name: The specific dataset name we want to plot.
     :param x_axis: The x axis values tha correspond to the y measurements.
     :param metric_name: The name of the metric we are plotting
+    :param markevery: int
+        Place a marker every this many points on the lines.
     :return: A matplotlib Axes object, containing the plotted figure (no legends)
     """
     fig = plt.figure()
@@ -126,6 +128,7 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery
         # ax.errorbar(x_axis, mu, std_dev, label=method, marker=next(marker),
         #             capsize=3)
         # TODO: The order of the methods changes as a result of the renaming. Decide on one and be consistent.
+        # TODO: This also breaks if we try to plot sweeps like 0.7 because the are used as method names
         ax.plot(x_axis, mu, label=METHOD_RENAMES[method], marker=next(marker), markevery=markevery)
         ax.fill_between(x_axis, mu - std_dev, mu + std_dev, alpha=.25, linewidth=0)
     return ax
@@ -248,11 +251,11 @@ def main():
     args = parse_args()
 
     params = {
-        'axes.labelsize': 12,
-        'font.size': 12,
-        'legend.fontsize': 12,
-        'xtick.labelsize': 12,
-        'ytick.labelsize': 12,
+        'axes.labelsize': 16,
+        'font.size': 14,
+        'legend.fontsize': 14,
+        'xtick.labelsize': 14,
+        'ytick.labelsize': 14,
         'text.usetex': args.use_tex,
         'figure.figsize': [args.fig_width, args.fig_height]
     }
