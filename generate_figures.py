@@ -52,9 +52,9 @@ def parse_args():
     parser.add_argument("--fig-width", type=int, default=6)
     alg_selection = parser.add_mutually_exclusive_group()
     alg_selection.add_argument("--include-only", nargs='+',
-                               help=" Include only the provided output directories")
+                               help="Include only the provided output directories")
     alg_selection.add_argument("--exclude", nargs='+',
-                               help=" Exclude the provided output directories")
+                               help="Exclude the provided output directories")
 
     return parser.parse_args()
 

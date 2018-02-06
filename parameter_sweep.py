@@ -16,16 +16,16 @@ def parse_args():
     parser.add_argument("--command", required=True,
                         help="The base command to run, this does not change across sweeps")
     parser.add_argument("--sweep-argument", required=True,
-                        help="The argument to sweep on")
+                        help="The argument to sweep on, e.g. \"meta\"")
     parser.add_argument("--output-prefix", required=True,
                         help="The prefix for the output argument")
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--argument-list", nargs='+',
-                       help="A list of arguments to run")
+                       help="A list of arguments to use, e.g. \"OnlineQRF OoBConformalApproximate\"")
     group.add_argument("--argument-range", nargs=3,
                        help="A string representation of an argument range, enter"
-                            "\"start end step\" as in np.arange(start, end, step)")
+                            "\"start end step\" as in np.arange(start, end, step).")
 
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of experiment jobs to run in parallel, max one per input file")
@@ -34,11 +34,11 @@ def parse_args():
                         help="Set to 1 output per experiment, 2 to write MOA output to stdout.")
     parser.add_argument("--inner-sweep-argument",
                         help="The argument to sweep on")
-    group = parser.add_mutually_exclusive_group()
+    group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--inner-argument-list", nargs='+',
                        help="A list of arguments to run")
     group.add_argument("--inner-argument-range", nargs=3,
-                       help="A string representation of an argument range, enter"
+                       help="A string representation of an argument range, enter "
                             "\"start end step\" as in np.arange(start, end, step)")
 
     return parser.parse_args()
