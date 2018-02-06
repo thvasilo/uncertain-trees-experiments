@@ -65,10 +65,10 @@ def parse_args():
 def main():
     args = parse_args()
 
-    data_path = Path(args.input)
+    data_path = Path(args.input).absolute()
     if args.output is None:
         args.output = str(data_path / "MondrianForest")
-    output_path = Path(args.output)
+    output_path = Path(args.output).absolute()
     output_path.mkdir(parents=True, exist_ok=args.overwrite)
 
     # TODO: Other/customizable scorers?

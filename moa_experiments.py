@@ -61,7 +61,7 @@ def main():
         command_prefix += "-javaagent:{}/dependency-jars/sizeofag-1.0.0.jar ".format(moa_dir)
 
     # Set up input and output dirs
-    data_path = Path(args.input)
+    data_path = Path(args.input).absolute()
 
     # TODO: Customization for base learner (buckets will be necessary)
     if args.meta == "OnlineQRF":
@@ -71,10 +71,10 @@ def main():
 
     # If the user did not provide an output dir, put results under the data folder
     if args.output is None and not args.stdout:
-        output_path = data_path / args.meta
+        output_path = (data_path / args.meta).absolute()
         print("Will try to create directory {} to store the results".format(output_path))
     else:
-        output_path = Path(args.output)
+        output_path = Path(args.output).absolute()
 
     # Create the output dir if needed
     output_path.mkdir(parents=True,
