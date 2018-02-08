@@ -4,6 +4,11 @@ The user provides a datadir which contains a number of arff files for regression
 prequential regression task is run on each one.
 
 The output is one csv file per dataset, per experiment repeat.
+Will also output two additional files per experiment:
+<name>.time.csv
+<name>.pred
+
+These contain timing measurements and each individual prediction.
 
 Usage: python skgarden_experiments.py --input path/to/data
 """
@@ -71,7 +76,6 @@ def main():
     output_path = Path(args.output).absolute()
     output_path.mkdir(parents=True, exist_ok=args.overwrite)
 
-    # TODO: Other/customizable scorers?
     scorers = {"mean interval size": mean_interval_size,
                "mean error rate": mean_error_rate}
 

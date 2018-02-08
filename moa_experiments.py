@@ -46,7 +46,6 @@ def main():
                         help="When given, will not report the size of the model in the results.")
     parser.add_argument("--verbose", type=int, default=0,
                         help="Set to 1 output per experiment, 2 to write MOA output to stdout.")
-    # TODO: Other params I want to investigate?
 
     args = parser.parse_args()
 
@@ -63,7 +62,6 @@ def main():
     # Set up input and output dirs
     data_path = Path(args.input).absolute()
 
-    # TODO: Customization for base learner (buckets will be necessary)
     if args.meta == "OnlineQRF":
         base_learner = "(trees.FIMTQR -e)"
     else:

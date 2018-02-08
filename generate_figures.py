@@ -3,6 +3,8 @@ Creates figures for a specific metric from a directory containing subdirs of res
 Will aggregate all the results for every dataset, and plot its mean
 value along with its std across experiments.
 
+Will also create a collection of latex tables and corresponding csv output.
+
 Used to plot the output from the skgarden_experiments and moa_experiments scripts.
 """
 import argparse
@@ -45,7 +47,9 @@ def parse_args():
     parser.add_argument("--use-tex", action="store_true", default=False,
                         help="When given, will use the Tex engine to create tex for the figures (slower)")
     parser.add_argument("--expected-error", default=0.1,
-                        help="The expected error level for the experiment.")
+                        help="The expected error level for the experiment. "
+                             "Used to draw the expected error horizontal line and calculate "
+                             "the MER deviation.")
     parser.add_argument("--mark-every", default=1, type=int,
                         help="Place a marker on the figures every this many data points.")
     parser.add_argument("--fig-height", type=int, default=6)

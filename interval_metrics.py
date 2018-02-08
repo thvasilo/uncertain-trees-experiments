@@ -16,6 +16,32 @@ from generate_figures import sort_nicely, gather_metric
 
 MOA_METHODS = {"OnlineQRF", "OoBConformalRegressor", "OoBConformalApproximate", "PredictiveVarianceRF"}
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", required=True,
+                        help="A dir containing sub-dirs of results, one per method."
+                             "The sub-dirs contain csv files with output, one per dataset, per"
+                             "experiment repeat."
+                             "Sub-directory names will be used as method names in the plots.")
+    parser.add_argument("--output", required=True,
+                        help="The folder to create the output in")
+    parser.add_argument("--overwrite", action="store_true", default=False,
+                        help="When given, will not check if the output folder already exists ,"
+                             "potentially overwriting its contents.")
+    parser.add_argument("--window-size",
+                        help="The window size to use to calculate the per window metrics.")
+    alg_selection = parser.add_mutually_exclusive_group()
+    alg_selection.add_argument("--include-only", nargs='+',
+                               help=" Include only the provided output directories")
+    alg_selection.add_argument("--exclude", nargs='+',
+                               help=" Exclude the provided output directories")
+    parser.add_argument("--force-moa", action="store_true", default=False,
+                        help="Enforce parsing of the dirs using the MOA format."
+                             "Use when directory names don't match a method name (e.g. OnlineQRF),"
+                             "MondrianForest parsing is used as the default in that case.")
+
+    return parser.parse_args()
+
 
 def parse_moa_line(line: str) -> str:
     # Expected line format: "Out 0: interval_low interval_high ,true_value"
@@ -85,33 +111,6 @@ def gather_method_results(method_dir: Path):
         # df["interval_lower_norm"] = normalize(df["interval_low"], df["true_value"])
         res[base_name].append(df)
     return res
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True,
-                        help="A dir containing sub-dirs of results, one per method."
-                             "The sub-dirs contain csv files with output, one per dataset, per"
-                             "experiment repeat."
-                             "Sub-directory names will be used as method names in the plots.")
-    parser.add_argument("--output", required=True,
-                        help="The folder to create the output in")
-    parser.add_argument("--overwrite", action="store_true", default=False,
-                        help="When given, will not check if the output folder already exists ,"
-                             "potentially overwriting its contents.")
-    parser.add_argument("--window-size",
-                        help="The window size to use to calculate the per window metrics.")
-    alg_selection = parser.add_mutually_exclusive_group()
-    alg_selection.add_argument("--include-only", nargs='+',
-                               help=" Include only the provided output directories")
-    alg_selection.add_argument("--exclude", nargs='+',
-                               help=" Exclude the provided output directories")
-    parser.add_argument("--force-moa", action="store_true", default=False,
-                        help="Enforce parsing of the dirs using the MOA format."
-                             "Use when directory names don't match a method name (e.g. OnlineQRF),"
-                             "MondrianForest parsing is used as the default in that case.")
-
-    return parser.parse_args()
 
 
 def main():
