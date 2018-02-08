@@ -86,8 +86,7 @@ def main():
             meta=args.meta, base=base_learner, size=args.ensemble_size,
             confidence=args.confidence, threads=args.learner_threads)
         if args.meta != "OnlineQRF":
-            learner += " -i {cal_size} -c {cal_file}".format(
-                cal_size=args.max_calibration_instances, cal_file=args.calibration_file)
+            learner += " -i {cal_size} ".format(cal_size=args.max_calibration_instances)
         else:
             learner += " -b {}".format(args.num_bins)
         for i in range(args.repeats):
