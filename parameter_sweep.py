@@ -34,7 +34,7 @@ def parse_args():
                         help="Set to 1 output per experiment, 2 to write MOA output to stdout.")
     parser.add_argument("--inner-sweep-argument",
                         help="The argument to sweep on")
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group()
     group.add_argument("--inner-argument-list", nargs='+',
                        help="A list of arguments to run")
     group.add_argument("--inner-argument-range", nargs=3,
