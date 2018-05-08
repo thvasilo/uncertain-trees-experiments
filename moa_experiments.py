@@ -15,6 +15,7 @@ from subprocess import run
 
 from joblib import Parallel, delayed
 
+from parameter_sweep import run_print
 
 def main():
     parser = argparse.ArgumentParser(description="Runs MOA experiments and stores results into files")
@@ -81,6 +82,10 @@ def main():
     # Run experiments for each data file
     commands = []
     commands_per_file = defaultdict(list)
+    arff_files = data_path.glob("*.arff")
+    if len(list(arff_files)) == 0:  # Note: this exhausts the iterator, need a new one
+        raise FileNotFoundError("No arff files found in {} !".format(data_path))
+
     for arff_file in data_path.glob("*.arff"):
         learner = "meta.{meta} -l {base} -s {size} -a {confidence} -j {threads}".format(
             meta=args.meta, base=base_learner, size=args.ensemble_size,
@@ -112,7 +117,7 @@ def main():
     with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
         for i in range(args.repeats):
             print("Running repeat {}/{}".format(i+1, args.repeats))
-            parallel(delayed(run)(commands[i], shell=True)
+            parallel(delayed(run_print)(commands[i])
                      for arff_file, commands in commands_per_file.items())
 
     # Write the settings for the experiment

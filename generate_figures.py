@@ -129,11 +129,7 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery
         mu = metric_df.mean()
         std_dev = metric_df.std()
         # Plot the line for the method and dataset
-        # ax.errorbar(x_axis, mu, std_dev, label=method, marker=next(marker),
-        #             capsize=3)
-        # TODO: The order of the methods changes as a result of the renaming. Decide on one and be consistent.
-        # TODO: This also breaks if we try to plot sweeps like 0.7 because the are used as method names
-        ax.plot(x_axis, mu, label=METHOD_RENAMES[method], marker=next(marker), markevery=markevery)
+        ax.plot(x_axis, mu, label=method, marker=next(marker), markevery=markevery)
         ax.fill_between(x_axis, mu - std_dev, mu + std_dev, alpha=.25, linewidth=0)
     return ax
 
@@ -254,12 +250,14 @@ def create_tables(method_metric_dict, outpath, expected_error):
 def main():
     args = parse_args()
 
+    large_text = 28
+    small_text = 26
     params = {
-        'axes.labelsize': 16,
-        'font.size': 14,
-        'legend.fontsize': 14,
-        'xtick.labelsize': 14,
-        'ytick.labelsize': 14,
+        'axes.labelsize': large_text,
+        'font.size': small_text,
+        'legend.fontsize': large_text,
+        'xtick.labelsize': small_text,
+        'ytick.labelsize': small_text,
         'text.usetex': args.use_tex,
         'figure.figsize': [args.fig_width, args.fig_height]
     }
