@@ -22,14 +22,12 @@ def parse_args():
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--argument-list", nargs='+',
-                       help="A list of arguments to use, e.g. \"OnlineQRF OoBConformalApproximate\"")
+                       help="A space-separated list of arguments to use, e.g. \"OnlineQRF CPExact\"")
     group.add_argument("--argument-range", nargs=3,
                        help="A string representation of an argument range, enter"
                             "\"start end step\" as in np.arange(start, end, step).")
-
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of experiment jobs to run in parallel, max one per input file")
-
     parser.add_argument("--verbose", type=int, default=0,
                         help="Set to 1 output per experiment, 2 to write MOA output to stdout.")
     parser.add_argument("--inner-sweep-argument",

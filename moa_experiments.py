@@ -22,8 +22,8 @@ def main():
     parser.add_argument("--moajar", help="Path to MOA jar", required=True)
     parser.add_argument("--input", help="A directory containing one or more arff data files", required=True)
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
-                        choices=["OnlineQRF", "OoBConformalRegressor", "PredictiveVarianceRF",
-                                 "OoBConformalApproximate"])
+                        choices=["OnlineQRF", "CPApproximate", "PredictiveVarianceRF",
+                                 "CPExact"])
     parser.add_argument("--repeats", help="Number of times to repeat each experiment", type=int, default=1)
     parser.add_argument("--window", help="Performance report window size", type=int, default=1000)
     parser.add_argument("--njobs", type=int, default=1,

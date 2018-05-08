@@ -62,7 +62,7 @@ def parse_args():
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of repeat experiments to run in parallel")
     parser.add_argument("--dont-save-predictions", default=False, action="store_true",
-                        help="When given, will no create predictions file.")
+                        help="When given, will not create predictions file.")
 
     return parser.parse_args()
 
