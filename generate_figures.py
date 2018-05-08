@@ -131,9 +131,7 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery
         # Plot the line for the method and dataset
         # ax.errorbar(x_axis, mu, std_dev, label=method, marker=next(marker),
         #             capsize=3)
-        # TODO: The order of the methods changes as a result of the renaming. Decide on one and be consistent.
-        # TODO: This also breaks if we try to plot sweeps like 0.7 because the are used as method names
-        ax.plot(x_axis, mu, label=METHOD_RENAMES[method], marker=next(marker), markevery=markevery)
+        ax.plot(x_axis, mu, label=method, marker=next(marker), markevery=markevery)
         ax.fill_between(x_axis, mu - std_dev, mu + std_dev, alpha=.25, linewidth=0)
     return ax
 
@@ -254,12 +252,14 @@ def create_tables(method_metric_dict, outpath, expected_error):
 def main():
     args = parse_args()
 
+    large_text = 28
+    small_text = 26
     params = {
-        'axes.labelsize': 16,
-        'font.size': 14,
-        'legend.fontsize': 14,
-        'xtick.labelsize': 14,
-        'ytick.labelsize': 14,
+        'axes.labelsize': large_text,
+        'font.size': small_text,
+        'legend.fontsize': large_text,
+        'xtick.labelsize': small_text,
+        'ytick.labelsize': small_text,
         'text.usetex': args.use_tex,
         'figure.figsize': [args.fig_width, args.fig_height]
     }
@@ -285,7 +285,8 @@ def main():
     for method_dir in sorted_dirs:
         method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
 
-    for metric in ["mean error rate", "mean interval size"]:
+    metrics = ["mean error rate", "mean interval size", "[avg] model serialized size (bytes)"]
+    for metric in metrics:
         # Aggregate the list of result df to a single df per dataset, per method.
         # Format: {method: {ds_name: measurements_df}}
         # Each line in measurements_df is one experiment
@@ -317,6 +318,8 @@ def main():
             except KeyError:
                 # In which case we should have only Python-generated experiments, which should have an index column
                 x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
+            if metric == "[avg] model serialized size (bytes)":
+                metric = "model size"
             ax = plot_metric(method_ds_metric, dataset, x_axis, metric, args.mark_every)
             if metric == "mean error rate":
                 ax.axhline(y=args.expected_error, linestyle='dashed', color='grey')

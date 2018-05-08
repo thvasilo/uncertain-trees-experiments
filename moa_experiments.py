@@ -15,6 +15,8 @@ from subprocess import run
 
 from joblib import Parallel, delayed
 
+from parameter_sweep import run_print
+
 
 def main():
     parser = argparse.ArgumentParser(description="Runs MOA experiments and stores results into files")
@@ -23,6 +25,11 @@ def main():
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
                         choices=["OnlineQRF", "OoBConformalRegressor", "PredictiveVarianceRF",
                                  "OoBConformalApproximate"])
+    parser.add_argument("--max-instances", type=int, default=-1,
+                        help="Maximum number of instances to process")
+    parser.add_argument("--stop-growing", default=False, action="store_true")
+    parser.add_argument("--aggregate-histograms", default=False, action="store_true")
+    parser.add_argument("--max-memory", help="Max size allows for each tree, in bytes.", type=int, default=int(2e9))
     parser.add_argument("--repeats", help="Number of times to repeat each experiment", type=int, default=1)
     parser.add_argument("--window", help="Performance report window size", type=int, default=1000)
     parser.add_argument("--njobs", type=int, default=1,
@@ -62,10 +69,16 @@ def main():
     # Set up input and output dirs
     data_path = Path(args.input).absolute()
 
+    # Set up the base learners
     if args.meta == "OnlineQRF":
-        base_learner = "(trees.FIMTQR -e)"
+        base_learner = "(trees.FIMTQR "
     else:
-        base_learner = "(trees.FIMTDD -e)"
+
+        base_learner = "(trees.FIMTDD "
+
+    stop_arg = "-z" if args.stop_growing else ""
+    base_suffix = "-e -x {} -m {} {})".format(args.window, args.max_memory, stop_arg)
+    base_learner += base_suffix
 
     # If the user did not provide an output dir, put results under the data folder
     if args.output is None and not args.stdout:
@@ -81,7 +94,11 @@ def main():
     # Run experiments for each data file
     commands = []
     commands_per_file = defaultdict(list)
+    arff_files = data_path.glob("*.arff")
+    if len(list(arff_files)) == 0:  # Note: this exhausts the iterator, need a new one
+        raise FileNotFoundError("No arff files found in {} !".format(data_path))
     for arff_file in data_path.glob("*.arff"):
+        # Set up meta-learner
         learner = "meta.{meta} -l {base} -s {size} -a {confidence} -j {threads}".format(
             meta=args.meta, base=base_learner, size=args.ensemble_size,
             confidence=args.confidence, threads=args.learner_threads)
@@ -89,12 +106,16 @@ def main():
             learner += " -i {cal_size} ".format(cal_size=args.max_calibration_instances)
         else:
             learner += " -b {}".format(args.num_bins)
+            if args.aggregate_histograms:
+                learner += " -x "
         for i in range(args.repeats):
-            command = command_prefix + "moa.DoTask \" {task} -l ({learner}) " \
-                                              "-s (ArffFileStream -f {arff_file}) " \
-                                              "-f {window}".format(task=task, learner=learner,
-                                                                   arff_file=data_path / arff_file,
-                                                                   window=args.window)
+            command = command_prefix + \
+                "moa.DoTask \" {task} -l ({learner}) " \
+                "-s (ArffFileStream -f {arff_file}) " \
+                "-f {window} -i {max_inst} ".format(
+                    task=task, learner=learner,
+                    arff_file=data_path / arff_file,
+                    window=args.window, max_inst=args.max_instances)
             if not args.stdout:
                 command += " -d {}".format(output_path / (arff_file.stem + "_{}.csv".format(i)))
                 if not args.dont_save_predictions:
@@ -112,7 +133,7 @@ def main():
     with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
         for i in range(args.repeats):
             print("Running repeat {}/{}".format(i+1, args.repeats))
-            parallel(delayed(run)(commands[i], shell=True)
+            parallel(delayed(run_print)(commands[i])
                      for arff_file, commands in commands_per_file.items())
 
     # Write the settings for the experiment
