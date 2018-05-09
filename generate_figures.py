@@ -11,6 +11,7 @@ import argparse
 from collections import defaultdict, OrderedDict
 from pathlib import Path
 import itertools
+import json
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -250,12 +251,13 @@ def create_tables(method_metric_dict, outpath, expected_error):
 def main():
     args = parse_args()
 
-    large_text = 28
-    small_text = 26
+    # l=16/s=14 for airlines plots
+    large_text = 16
+    small_text = 14
     params = {
         'axes.labelsize': large_text,
         'font.size': small_text,
-        'legend.fontsize': large_text,
+        'legend.fontsize': small_text,
         'xtick.labelsize': small_text,
         'ytick.labelsize': small_text,
         'text.usetex': args.use_tex,
@@ -265,6 +267,8 @@ def main():
 
     input_path = Path(args.input).absolute()
     output_path = Path(args.output).absolute()
+    json_file = output_path / "plot-settings.json"
+    json_file.write_text(json.dumps(params))
 
     assert output_path.parent != input_path, "Setting output path under input can cause issues, choose another path."
     output_path.mkdir(parents=True, exist_ok=args.overwrite)
@@ -291,6 +295,16 @@ def main():
         for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
             # TODO: Make it possible to iterate over metrics?
             method_ds_metric[method] = gather_metric(ds_to_measurements, metric)
+
+        # Will try to rearrange columns in this order:
+        # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
+        # This is the order used in the paper.
+        original_dict = method_ds_metric
+        try:
+            order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+            method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
+        except KeyError:
+            method_ds_metric = original_dict
 
         # Gather the names of datasets
         ds_names = set()

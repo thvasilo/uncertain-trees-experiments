@@ -14,7 +14,8 @@ from tabulate import tabulate
 
 from generate_figures import sort_nicely, gather_metric
 
-MOA_METHODS = {"OnlineQRF", "OoBConformalRegressor", "OoBConformalApproximate", "PredictiveVarianceRF"}
+MOA_METHODS = {"OnlineQRF", "OoBConformalRegressor", "OoBConformalApproximate", "PredictiveVarianceRF",
+               "CPExact", "CPApproximate"}
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -89,6 +90,7 @@ def create_pred_csvs(method_dir: Path, force_moa: bool):
         else:
             parse_file(res_file, parse_skgarden_line)
 
+
 def normalize(x, true_col):
     normalized = (x - min(true_col)) / (max(true_col) - min(true_col))
     return normalized
@@ -105,8 +107,12 @@ def gather_method_results(method_dir: Path):
         true_max = df["true_value"].max()
         true_min = df["true_value"].min()
         df["relative_interval_size"] = df["interval_size"] / (true_max - true_min)
-        df['correct'] = np.where((df['interval_high'] >= df['true_value']) & (df['interval_low'] <= df['true_value']),
-                                 df['relative_interval_size'], np.nan)
+        df['weighted_correct'] = np.where(
+            (df['interval_high'] >= df['true_value']) & (df['interval_low'] <= df['true_value']),
+            df['relative_interval_size'], np.nan)
+        df['error_rate'] = np.where(
+            (df['true_value'] <= df['interval_high']) & (df['true_value'] >= df['interval_low']),
+            0, 1)
         # df["interval_high_norm"] = normalize(df["interval_high"], df["true_value"])
         # df["interval_lower_norm"] = normalize(df["interval_low"], df["true_value"])
         res[base_name].append(df)
@@ -143,7 +149,7 @@ def main():
             create_pred_csvs(method_dir, args.force_moa)
         method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
 
-    for metric in ["correct", "relative_interval_size"]:
+    for metric in ["error_rate", "weighted_correct", "relative_interval_size"]:
         method_ds_metric = OrderedDict()
         for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
             # TODO: Make it possible to iterate over metrics?
@@ -160,7 +166,7 @@ def main():
             ds_stds = []
             # Get the measurements for the requested data, and calc their stats
             for dataset_name, metric_df in natsorted(ds_name_to_measurements .items()):
-                if metric == "correct":
+                if metric == "weighted_correct":
                     relative_interval_sums = metric_df.sum(axis=1)  # Mean for each example over repeats
                     non_na_counts = metric_df.count(axis=1)
                     # Correctness is metric that tries to measure how good a method is, by multiplying its
@@ -172,6 +178,12 @@ def main():
                     overall_mean = correctness.mean()
                     overall_median_mean = correctness.median()
                     overall_std_mean = correctness.std()
+                elif metric == "error_rate":
+                    error_counts = metric_df.sum(axis=1)
+                    error_rates = error_counts / metric_df.shape[1]
+                    overall_mean = error_rates.mean()
+                    overall_median_mean = error_rates.median()
+                    overall_std_mean = error_rates.std()
                 else:
                     relative_interval_means = metric_df.mean()  # Mean for each example over repeats
                     relative_interval_medians = metric_df.median()  # Median for each example over repeats
@@ -225,6 +237,18 @@ def main():
         def create_table_str(df):
             float_format = ".2f"
             return tabulate(df, headers='keys', tablefmt='latex_booktabs', floatfmt=float_format)
+
+        # Will try to rearrange columns in this order:
+        # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
+        # This is the order used in the paper.
+        try:
+            order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+            mean_aggregate_metric_df = mean_aggregate_metric_df[order]
+            median_aggregate_metric_df = median_aggregate_metric_df[order]
+            std_aggregate_metric_df = std_aggregate_metric_df[order]
+        except KeyError:
+            # If a column was missing just leave them as they were
+            pass
 
         # TODO: Create figures? Maybe window metric?
         mean_table_str = create_table_str(mean_aggregate_metric_df)
