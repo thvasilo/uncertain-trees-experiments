@@ -17,6 +17,7 @@ from generate_figures import sort_nicely, gather_metric
 MOA_METHODS = {"OnlineQRF", "OoBConformalRegressor", "OoBConformalApproximate", "PredictiveVarianceRF",
                "CPExact", "CPApproximate"}
 
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True,
@@ -31,6 +32,8 @@ def parse_args():
                              "potentially overwriting its contents.")
     parser.add_argument("--window-size",
                         help="The window size to use to calculate the per window metrics.")
+    parser.add_argument("--expected-mer", type=float, default=0.1,
+                        help="The expected MER for these experiments.")
     alg_selection = parser.add_mutually_exclusive_group()
     alg_selection.add_argument("--include-only", nargs='+',
                                help=" Include only the provided output directories")
@@ -141,6 +144,7 @@ def main():
     # Format: {method: {ds_name: measurement_df_list}}
     method_to_dsname_to_result_df_list = OrderedDict()
     sorted_dirs = sort_nicely(method_dirs)
+    mean_tables = {}
     for method_dir in sorted_dirs:
         # TODO: Have proper check that each result_X.csv file has respective result_X.pred
         if len(list(method_dir.glob("*.pred"))) == 0:
@@ -214,25 +218,28 @@ def main():
                 assert left_name == right_name, \
                     "DS order mismatch: {}, {}".format(left_name, right_name)
 
+        def add_stats(df):
+            df.loc['Mean'] = df.mean()
+            df.loc['Median'] = df.median()
+            df.loc['Std'] = df.std()
+            return df
+
         def create_df(method_to_measurements_dict):
             dictionary = OrderedDict()
             dictionary["Dataset"] = ds_names
             dictionary.update(method_to_measurements_dict)
             df = pd.DataFrame(dictionary)
             df = df.set_index("Dataset")
-            df.loc['Mean'] = df.mean()
-            df.loc['Median'] = df.median()
-            df.loc['Std'] = df.std()
-            return df
+            return add_stats(df)
 
         mean_aggregate_metric_df = create_df(method_to_mean_measurements)
         median_aggregate_metric_df = create_df(method_to_median_measurements)
         std_aggregate_metric_df = create_df(method_to_std_measurements)
 
         table_outpath = Path(args.output) / metric.replace(' ', '_')
-        mean_aggregate_metric_df.to_csv(table_outpath .with_suffix(".means.csv"))
-        median_aggregate_metric_df.to_csv(table_outpath .with_suffix(".medians.csv"))
-        std_aggregate_metric_df.to_csv(table_outpath .with_suffix(".std.csv"))
+        mean_aggregate_metric_df.to_csv(table_outpath.with_suffix(".means.csv"))
+        median_aggregate_metric_df.to_csv(table_outpath.with_suffix(".medians.csv"))
+        std_aggregate_metric_df.to_csv(table_outpath.with_suffix(".std.csv"))
 
         def create_table_str(df):
             float_format = ".2f"
@@ -249,7 +256,7 @@ def main():
         except KeyError:
             # If a column was missing just leave them as they were
             pass
-
+        mean_tables[metric] = mean_aggregate_metric_df
         # TODO: Create figures? Maybe window metric?
         mean_table_str = create_table_str(mean_aggregate_metric_df)
         median_table_str = create_table_str(median_aggregate_metric_df)
@@ -258,6 +265,39 @@ def main():
         table_outpath.with_suffix(".means.tex").write_text(mean_table_str)
         table_outpath.with_suffix(".medians.tex").write_text(median_table_str)
         table_outpath.with_suffix(".stds.tex").write_text(std_table_str)
+
+    # Create adjusted utility table with time/utility function (using expected MER as deadline)
+
+    # We use a dropoff function that takes each element from the utility and
+    # error rate tables, and applies a function to them if the error rate is above expected MER
+    def dropoff(util, err, func):
+        if err > args.expected_mer:
+            return max(func(util, err), 0)
+        else:
+            return max(util, 0)
+
+    # Vectorize the function
+    tuf = np.vectorize(dropoff)
+
+    # Linear dropoff, utility is zero when MER is twice bigger than expected
+    def linear(util, error):
+        return max(util, 0) * max((2 - (error / args.expected_mer)), 0)
+
+    # Compute utility as one minus the RIS TODO: 0 max should be done here
+    mean_error_rates = mean_tables["error_rate"].iloc[:len(ds_names), ]  # Drop the aggregate stats rows
+    utility = 1 - mean_tables["relative_interval_size"].iloc[:len(ds_names), ]
+
+    adjusted_utils = tuf(utility, mean_error_rates, linear)
+
+    # Build up the adjusted util dataframe, add dataset names, aggregate stats
+    adj_util_df = pd.DataFrame(adjusted_utils, columns=utility.columns.tolist())
+    adj_util_df["Dataset"] = ds_names
+    adj_util_df = add_stats(adj_util_df.set_index("Dataset"))
+
+    util_path = Path(args.output) / "adjusted_utility"
+    adj_util_df.to_csv(util_path.with_suffix(".csv"))
+    util_table_str = create_table_str(adj_util_df)
+    util_path.with_suffix(".tex").write_text(util_table_str)
 
 
 if __name__ == '__main__':

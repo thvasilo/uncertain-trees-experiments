@@ -42,8 +42,10 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_print(cur_command):
+def run_print(cur_command, order=""):
     print("Running command:\n{}".format(cur_command))
+    if order != "":
+        print("Task index: {}".format(order))
     run(cur_command, shell=True)
 
 
@@ -84,9 +86,15 @@ def main():
                 arg=args.sweep_argument, val=outer_value, outdir=outdir)
             command_list.append(command)
 
+    # joblib does not support nested parallelism
+    if args.njobs > 1 and "njobs" in args.command:
+        print("WARNING: joblib does not support nested parallelism, setting sweep njobs to 1!")
+        args.njobs = 1
+
     with Parallel(n_jobs=args.njobs, verbose=args.verbose) as parallel:
-        parallel(delayed(run_print)(command)
-                 for command in command_list)
+        num_tasks = len(command_list)
+        parallel(delayed(run_print)(command, "{}/{}".format(i+1, num_tasks))
+                 for i, command in enumerate(command_list))
 
 
 if __name__ == "__main__":
