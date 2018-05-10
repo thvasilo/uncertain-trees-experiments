@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 import re
+import sys
 
 import pandas as pd
 import numpy as np
@@ -77,7 +78,8 @@ def parse_file(filepath: Path, parse_line):
     """
 
     if filepath.with_suffix(".pred.csv").exists():
-        print("{} already exists, skipping...".format(filepath.with_suffix(".pred.csv")))
+        # TODO: Potentially creates a lot of output, minimize somehow?
+        print("{} already exists, skipping...".format(filepath.with_suffix(".pred.csv").name))
     else:
         with filepath.open() as infile, filepath.with_suffix(".pred.csv").open('w') as outfile:
             outfile.write("interval_low,interval_high,true_value\n")
@@ -265,6 +267,19 @@ def main():
         table_outpath.with_suffix(".means.tex").write_text(mean_table_str)
         table_outpath.with_suffix(".medians.tex").write_text(median_table_str)
         table_outpath.with_suffix(".stds.tex").write_text(std_table_str)
+
+    def is_number(s):
+        try:
+            float(s)
+            return True
+        except ValueError:
+            return False
+    for method_name in method_dirs:
+        if is_number(method_name.name):
+            print("Seems like you're running this on top of confidence output, so we won't create utility output.")
+            print("Method list was: {}.".format(method_dirs))
+            print("Use confidence_utility_calculation.py instead!")
+            sys.exit()
 
     # Create adjusted utility table with time/utility function (using expected MER as deadline)
 
