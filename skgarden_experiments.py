@@ -45,7 +45,7 @@ def parse_args():
                         help="Path to the folder containing the arff files.")
     parser.add_argument("--output", type=str,
                         help="Path to output folder. If not provided will create a dir named"
-                             "MondrianForest")
+                             "MondrianForest under the input directory.")
     parser.add_argument("--n_estimators", type=int, default=10,
                         help="Number of trees to use.")
     parser.add_argument("--confidence", type=float, default=0.9,
@@ -98,6 +98,7 @@ def main():
     results = {"arguments": vars(args), "learner_params": learner_params_list[0]}
     out_file = output_path / "settings.json"
     out_file.write_text(json.dumps(results))
+    print("Output created under :{}".format(output_path))
 
 
 def run_experiment(i, input_file, output_path, scorers, args, X, y):

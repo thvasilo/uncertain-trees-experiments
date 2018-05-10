@@ -267,8 +267,6 @@ def main():
 
     input_path = Path(args.input).absolute()
     output_path = Path(args.output).absolute()
-    json_file = output_path / "plot-settings.json"
-    json_file.write_text(json.dumps(params))
 
     assert output_path.parent != input_path, "Setting output path under input can cause issues, choose another path."
     output_path.mkdir(parents=True, exist_ok=args.overwrite)
@@ -286,6 +284,9 @@ def main():
     sorted_dirs = sort_nicely(method_dirs)
     for method_dir in sorted_dirs:
         method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
+
+    json_file = output_path / "plot-settings.json"
+    json_file.write_text(json.dumps(params))
 
     for metric in ["mean error rate", "mean interval size"]:
         # Aggregate the list of result df to a single df per dataset, per method.
