@@ -3,6 +3,7 @@ Parses the prediction files from MOA and skgarden output
 and creates normalized metrics for the intervals.
 """
 import argparse
+import json
 from pathlib import Path
 from collections import OrderedDict, defaultdict
 import re
@@ -12,6 +13,7 @@ import pandas as pd
 import numpy as np
 from natsort import natsorted
 from tabulate import tabulate
+from joblib import Parallel, delayed
 
 from generate_figures import sort_nicely, gather_metric
 
@@ -35,6 +37,8 @@ def parse_args():
                         help="The window size to use to calculate the per window metrics.")
     parser.add_argument("--expected-mer", type=float, default=0.1,
                         help="The expected MER for these experiments.")
+    # parser.add_argument("--njobs", type=int, default=1,
+    #                     help="Number of prediction files to process in parallel.")
     alg_selection = parser.add_mutually_exclusive_group()
     alg_selection.add_argument("--include-only", nargs='+',
                                help=" Include only the provided output directories")
@@ -76,11 +80,7 @@ def parse_file(filepath: Path, parse_line):
         A callable that takes a string, parses it, and returns a string in
         the expected format.
     """
-
-    if filepath.with_suffix(".pred.csv").exists():
-        # TODO: Potentially creates a lot of output, minimize somehow?
-        print("{} already exists, skipping...".format(filepath.with_suffix(".pred.csv").name))
-    else:
+    if not filepath.with_suffix(".pred.csv").exists():
         with filepath.open() as infile, filepath.with_suffix(".pred.csv").open('w') as outfile:
             outfile.write("interval_low,interval_high,true_value\n")
             for line in infile:
@@ -94,6 +94,12 @@ def create_pred_csvs(method_dir: Path, force_moa: bool):
             parse_file(res_file, parse_moa_line)
         else:
             parse_file(res_file, parse_skgarden_line)
+    # TODO: Parallelize
+    # with Parallel(n_jobs=args.njobs) as parallel:
+    #     parallel(delayed(parse_file)(
+    #         res_file, parse_moa_line if res_file.parent.name in MOA_METHODS or args.force_moa
+    #         else res_file, parse_skgarden_line)
+    #              for res_file in method_dir.glob("*.pred"))
 
 
 def normalize(x, true_col):
@@ -102,6 +108,13 @@ def normalize(x, true_col):
 
 
 def gather_method_results(method_dir: Path):
+    """
+    Goes through all generated .pred.csv files in a method dir, collects the results
+    per dataset, and creates a list of metric dataframes per metric.
+    :param method_dir: A Path to method dir, contains repeats of experiments, with the suffix _x.pred.csv
+    where x is the experiment repeat index.
+    :return: Returns a dictionary {dataset_name: metric_df_list}
+    """
     res = defaultdict(list)
     for res_file in method_dir.glob("*.pred.csv"):
         # Get rid of any suffixes in the filename, and the _X repeat indicator
@@ -151,8 +164,13 @@ def main():
         # TODO: Have proper check that each result_X.csv file has respective result_X.pred
         if len(list(method_dir.glob("*.pred"))) == 0:
             raise FileNotFoundError("No prediction files found in {}!".format(method_dir))
-        if len(list(method_dir.glob("*.pred.csv"))) != len(list(method_dir.glob("*.pred"))):
+        num_pred_files = len(list(method_dir.glob("*.pred")))
+        num_processed_pred_files = len(list(method_dir.glob("*.pred.csv")))
+        if num_processed_pred_files != num_pred_files:
+            print(".pred.csv files missing in {}. Creating {}/{}".format(
+                method_dir.name, num_pred_files - num_processed_pred_files, num_pred_files))
             create_pred_csvs(method_dir, args.force_moa)
+        # After .pred.csv files have been created, gather metrics
         method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
 
     for metric in ["error_rate", "weighted_correct", "relative_interval_size"]:
@@ -171,7 +189,7 @@ def main():
             ds_medians = []
             ds_stds = []
             # Get the measurements for the requested data, and calc their stats
-            for dataset_name, metric_df in natsorted(ds_name_to_measurements .items()):
+            for dataset_name, metric_df in natsorted(ds_name_to_measurements.items()):
                 if metric == "weighted_correct":
                     relative_interval_sums = metric_df.sum(axis=1)  # Mean for each example over repeats
                     non_na_counts = metric_df.count(axis=1)
@@ -190,7 +208,7 @@ def main():
                     overall_mean = error_rates.mean()
                     overall_median_mean = error_rates.median()
                     overall_std_mean = error_rates.std()
-                else:
+                else:  # Then it's RIS
                     relative_interval_means = metric_df.mean()  # Mean for each example over repeats
                     relative_interval_medians = metric_df.median()  # Median for each example over repeats
                     relative_interval_stds = metric_df.std()  # Std for each example over repeats
@@ -244,7 +262,7 @@ def main():
         std_aggregate_metric_df.to_csv(table_outpath.with_suffix(".std.csv"))
 
         def create_table_str(df):
-            float_format = ".2f"
+            float_format = ".3f" if metric == "error_rate" else ".2f"
             return tabulate(df, headers='keys', tablefmt='latex_booktabs', floatfmt=float_format)
 
         # Will try to rearrange columns in this order:
@@ -268,6 +286,12 @@ def main():
         table_outpath.with_suffix(".medians.tex").write_text(median_table_str)
         table_outpath.with_suffix(".stds.tex").write_text(std_table_str)
 
+    # Write json file with arguments to keep track of how output was generated
+    json_file = output_path / "interval_metrics_settings.json"
+    settings = vars(args)
+    json_file.write_text(json.dumps(settings))
+
+    # Ensure that the method dirs were not numbers, i.e. not repeats of confidence experiments.
     def is_number(s):
         try:
             float(s)
@@ -281,38 +305,30 @@ def main():
             print("Use confidence_utility_calculation.py instead!")
             sys.exit()
 
-    # Create adjusted utility table with time/utility function (using expected MER as deadline)
+    # Create adjusted utility table with step time/utility function (using expected MER as deadline)
 
-    # We use a dropoff function that takes each element from the utility and
-    # error rate tables, and applies a function to them if the error rate is above expected MER
-    def dropoff(util, err, func):
-        if err > args.expected_mer:
-            return max(func(util, err), 0)
-        else:
-            return max(util, 0)
-
-    # Vectorize the function
-    tuf = np.vectorize(dropoff)
-
-    # Linear dropoff, utility is zero when MER is twice bigger than expected
-    def linear(util, error):
-        return max(util, 0) * max((2 - (error / args.expected_mer)), 0)
-
-    # Compute utility as one minus the RIS TODO: 0 max should be done here
+    # Compute utility as one minus the RIS
     mean_error_rates = mean_tables["error_rate"].iloc[:len(ds_names), ]  # Drop the aggregate stats rows
-    utility = 1 - mean_tables["relative_interval_size"].iloc[:len(ds_names), ]
+    utility = 1 - np.minimum(mean_tables["relative_interval_size"].iloc[:len(ds_names), ], 1)
 
-    adjusted_utils = tuf(utility, mean_error_rates, linear)
+    util_path = Path(args.output) / "utility"
+    utility.to_csv(util_path.with_suffix(".csv"))
+    util_table_str = create_table_str(utility)
+    util_path.with_suffix(".tex").write_text(util_table_str)
+
+    # Step function
+    adjusted_utils = np.where(mean_error_rates > args.expected_mer, 0, utility)
+    # adjusted_utils = tuf(utility, mean_error_rates, step)
 
     # Build up the adjusted util dataframe, add dataset names, aggregate stats
     adj_util_df = pd.DataFrame(adjusted_utils, columns=utility.columns.tolist())
     adj_util_df["Dataset"] = ds_names
     adj_util_df = add_stats(adj_util_df.set_index("Dataset"))
 
-    util_path = Path(args.output) / "adjusted_utility"
-    adj_util_df.to_csv(util_path.with_suffix(".csv"))
-    util_table_str = create_table_str(adj_util_df)
-    util_path.with_suffix(".tex").write_text(util_table_str)
+    adj_util_path = Path(args.output) / "adjusted_utility"
+    adj_util_df.to_csv(adj_util_path.with_suffix(".csv"))
+    ajd_util_table_str = create_table_str(adj_util_df)
+    adj_util_path.with_suffix(".tex").write_text(ajd_util_table_str)
 
 
 if __name__ == '__main__':
