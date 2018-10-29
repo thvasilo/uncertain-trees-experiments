@@ -61,8 +61,8 @@ def parse_args():
                              "2 to include per-window output")
     parser.add_argument("--njobs", type=int, default=1,
                         help="Number of repeat experiments to run in parallel")
-    parser.add_argument("--dont-save-predictions", default=False, action="store_true",
-                        help="When given, will not create predictions file.")
+    parser.add_argument("--no-additional-output", default=False, action="store_true",
+                        help="When given, will not create predictions file and other computational metrics.")
 
     return parser.parse_args()
 
@@ -80,6 +80,9 @@ def main():
                "mean error rate": mean_error_rate}
 
     learner_params_list = None
+    if len(list(data_path.glob("*.arff"))) == 0:
+        raise FileNotFoundError("Could not find any arff files under {}".format(data_path))
+
     for filepath in data_path.glob("*.arff"):
         X, y = load_arff_data(filepath)
         print("Running experiments on {}".format(filepath.name))
@@ -109,11 +112,11 @@ def run_experiment(i, input_file, output_path, scorers, args, X, y):
     mfr = MondrianForestRegressor(n_estimators=args.n_estimators)
 
     # If asked to save predictions, create requisite file
-    pred_path = output_path / (input_file.stem + "_{}.pred".format(i)) if not args.dont_save_predictions else None
+    pred_path = output_path / (input_file.stem + "_{}.pred".format(i)) if not args.no_additional_output else None
 
     results = prequential_interval_evaluation(
-        mfr, X, y, args.confidence, scorers, args.window_size, verbose=args.verbose, prediction_output=pred_path)
-    results["learner_params"] = mfr.get_params()
+        mfr, X, y, args.confidence, scorers, args.window_size, verbose=args.verbose,
+        additional_output=pred_path)
 
     # Create index column
     num_windows = int(np.ceil(X.shape[0] / window_size))
@@ -125,8 +128,7 @@ def run_experiment(i, input_file, output_path, scorers, args, X, y):
     results["index"] = window_index_list
 
     # Save scores and index columns to csv
-    included_columns = set(scorers.keys())
-    included_columns.add("index")
+    included_columns = set(results.keys())
     # Create a df with only the score measurements and the index
     df = pd.DataFrame({k: results[k] for k in included_columns})
     df.to_csv(output_path / (input_file.stem + "_{}.csv".format(i)), index=False)

@@ -1,9 +1,12 @@
 import sys
+import pickle
 from collections import defaultdict
 from time import perf_counter
 
 import numpy as np
 from tqdm import trange
+
+from scipy.stats import norm
 
 # TODO: Since these break the "y_pred is a column vector convention", is there
 # any point in using them as sklearn metrics?
@@ -35,7 +38,7 @@ def mean_error_rate(y_true, y_interval):
     return wrong_intervals / y_true.shape[0]
 
 
-def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window_size=1000, verbose=0, prediction_output=None):
+def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window_size=1000, verbose=0, additional_output=None):
     """
     Prequential evaluation of an estimator by testing then training with
     each example in sequence. If a window size is set the average of a tumbling window
@@ -57,8 +60,9 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
         The size of the tumbling window, we average the metric(s) every x data points
     :param verbose: int
         If > 0 will display experiment progress bar. If > 1 will also print statistics per window.
-    :param prediction_output: None or file-like object, that provides a write function.
-        When not None, will write the prediction and interval estimates to the file.
+    :param additional_output: None or Pathlib object.
+        When provided, will write additional information about the run to files. These include the prediction and
+        interval estimates, timings, and serialized model size.
     :return: List or dict
         If scoring is a callable, will return a list of scores, size should be ceil(n_samples / window_size)
         If scoring is a dict, will return a dict {metric_name: list of scores}, list size should be
@@ -78,19 +82,32 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
     window_count = 0
     total_windows = int(np.ceil(n_samples / window_size))
     window_start = perf_counter()
-    pred_file = None
-    timings_file = None
-    if prediction_output is not None:
-        pred_file = prediction_output.open('w')
-        timings_file = prediction_output.with_suffix(".time.csv").open('w')
-        timings_file.write("instance,window_duration-sec,total_duration-sec\n")
+
+    def predict_interval(std_estimator, data, confidence_):
+        """
+        Returns a an interval prediction from an estimator that provides the std of a normal distribution
+        around the prediction.
+        :param std_estimator: An estimator that provides a .predict(X, return_std=True) function, and returns
+        the mean and std of a normal distribution.
+        :param data: A numpy array of features
+        :param confidence_: The desired confidence level, i.e. 1 - desired_error.
+        :return: A prediction interval as a 2-tuple of (lower_bound, upper_bound) floats.
+        """
+        assert np.isscalar(confidence_), "Confidence should be a scalar"
+        ensemble_mean, std = std_estimator.predict(data, return_std=True)
+        std += 1e-6 # Avoid NaNs. TODO: Better solution? How are std=0 produced??
+        interval_tuple = norm.interval(confidence_, loc=ensemble_mean, scale=std)
+        return np.concatenate((interval_tuple[0][:, np.newaxis], interval_tuple[1][:, np.newaxis]), axis=1)
 
     total_duration = 0
+    pred_file = None
+    if additional_output is not None:
+        pred_file = additional_output.open('w')
     for i in trange(n_samples, disable=(not verbose)):
         if i == 0:
             # sklearn does not allow prediction on an untrained model
             estimator.partial_fit(X[i, np.newaxis], y[i, np.newaxis])
-        y_interval = estimator.predict_interval(X[i, np.newaxis], confidence=confidence)
+        y_interval = predict_interval(estimator, X[i, np.newaxis], confidence)
         y_true = y[i, np.newaxis]
         if pred_file is not None:
             pred_file.write("{}, {}\n".format(y_interval.flatten(), y_true))
@@ -126,16 +143,16 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
             window_end = perf_counter()
             window_duration = window_end - window_start
             total_duration += window_duration
-            if timings_file is not None:
-                timings_file.write("{},{},{}\n".format(i, window_duration, total_duration))
-            if verbose > 1:
-                print("Time to process window: {} sec".format(window_duration))
+            if additional_output is not None:
+                test_scores["window_time"].append(window_duration)
+                test_scores["overall_time"].append(total_duration)
+                model_size = sys.getsizeof(pickle.dumps(estimator))
+                test_scores["model_size"].append(model_size)
+                if verbose > 1:
+                    print("Time to process window: {} sec".format(window_duration))
+                    print("Model size: {} bytes, {} MiB".format(model_size, model_size/1024**2))
             window_start = perf_counter()
 
         estimator.partial_fit(X[i, np.newaxis], y[i, np.newaxis])
-
-    if pred_file is not None:
-        pred_file.close()
-        timings_file.close()
 
     return test_scores
