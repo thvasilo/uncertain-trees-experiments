@@ -30,8 +30,7 @@ python moa_experiments.py --moajar /path/to/moa.jar --input /path/to/data --meta
 
 ### skgarden_experiments.py
 
-Used to run the Mondrian Forest experiments using our [fork](https://github.com/thvasilo/scikit-garden/tree/interval-predictions)
-of scikit-garden.
+Used to run the Mondrian Forest experiments using scikit-garden.
 
 
 Usage: `python skgarden_experiments.py --input path/to/data`
@@ -40,11 +39,10 @@ As above, you can check the argument help to get all the relevant
 options.
 
 The output is one csv file per dataset, per experiment repeat.
-Will also output two additional files per experiment:
-\<name\>.time.csv
+Will also conditionally output one additional files per experiment:
 \<name\>.pred
 
-These contain timing measurements and each individual prediction.
+This contains each individual prediction.
 
 Makes use of `evaluation_functions.py` that contains `skleaner`-like evaluation
 functions adjusted for interval predictors.

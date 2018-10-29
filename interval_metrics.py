@@ -13,7 +13,6 @@ import pandas as pd
 import numpy as np
 from natsort import natsorted
 from tabulate import tabulate
-from joblib import Parallel, delayed
 
 from generate_figures import sort_nicely, gather_metric
 
@@ -61,7 +60,7 @@ def parse_moa_line(line: str) -> str:
 
 def parse_skgarden_line(line: str) -> str:
     # Expected line format: "[interval_low interval_high], [true_value]"
-    re_line = re.sub(r"\[|\]|,", '', line).strip()
+    re_line = re.sub(r"[\[\],]", '', line).strip()
     parsed_line = re.sub(' +', ',', re_line)
 
     return parsed_line
@@ -148,6 +147,7 @@ def main():
 
     # Get all the directories under the input path
     method_dirs = [subpath for subpath in input_path.iterdir() if subpath.is_dir()]
+    assert len(method_dirs) > 0, "There should be at least one directory under the input, found 0!".format(method_dirs)
     if args.exclude is not None:
         method_dirs = [subpath for subpath in method_dirs if subpath.name not in args.exclude]
     elif args.include_only is not None:
