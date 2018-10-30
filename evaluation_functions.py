@@ -83,20 +83,24 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
     total_windows = int(np.ceil(n_samples / window_size))
     window_start = perf_counter()
 
-    def predict_interval(std_estimator, data, confidence_):
+    def predict_interval(estimator_, data, confidence_):
         """
         Returns a an interval prediction from an estimator that provides the std of a normal distribution
         around the prediction.
-        :param std_estimator: An estimator that provides a .predict(X, return_std=True) function, and returns
+        :param estimator: An estimator that provides a .predict(X, return_std=True) function, and returns
         the mean and std of a normal distribution.
         :param data: A numpy array of features
         :param confidence_: The desired confidence level, i.e. 1 - desired_error.
-        :return: A prediction interval as a 2-tuple of (lower_bound, upper_bound) floats.
+        :return: A prediction interval as a numpy array of floats.
         """
         assert np.isscalar(confidence_), "Confidence should be a scalar"
-        ensemble_mean, std = std_estimator.predict(data, return_std=True)
-        std += 1e-6 # Avoid NaNs. TODO: Better solution? How are std=0 produced??
-        interval_tuple = norm.interval(confidence_, loc=ensemble_mean, scale=std)
+        if hasattr(estimator_, 'vw_predict_interval'):  # Duck typing for the function, defined for VW but not for MF
+            interval_tuple = estimator.vw_predict_interval(data)
+        else:
+            ensemble_mean, std = estimator_.predict(data, return_std=True)
+            std += 1e-6  # Avoid NaNs. TODO: Better solution? How are std=0 produced??
+            interval_tuple = norm.interval(confidence_, loc=ensemble_mean, scale=std)
+
         return np.concatenate((interval_tuple[0][:, np.newaxis], interval_tuple[1][:, np.newaxis]), axis=1)
 
     total_duration = 0

@@ -15,15 +15,54 @@ Usage: python skgarden_experiments.py --input path/to/data
 import argparse
 from pathlib import Path
 import json
+from collections import namedtuple
 
 import arff
 import numpy as np
 from skgarden import MondrianForestRegressor
 import pandas as pd
+from vowpalwabbit.sklearn_vw import VWRegressor
 
 from evaluation_functions import mean_error_rate, mean_interval_size, prequential_interval_evaluation
 
 from joblib import Parallel, delayed
+
+
+class VWIntervalRegressor(object):
+    def __init__(self, confidence):
+        half_significance = (1.0 - confidence) / 2.0
+        self.lower = VWRegressor(loss_function='quantile', quantile_tau=half_significance)
+        self.upper = VWRegressor(loss_function='quantile', quantile_tau=1.0-half_significance)
+
+    def partial_fit(self, X, y):
+        self.lower.fit(X, y)
+        self.upper.fit(X, y)
+
+    def vw_predict_interval(self, X):
+        lower = self.lower.predict(X)
+        upper = self.upper.predict(X)
+        return lower, upper
+
+    def get_params(self):
+        return {'lower': self.lower.get_params(), 'upper': self.upper.get_params()}
+
+    def __getstate__(self):
+        state = {}
+        state['lower'] = dict(
+            params=self.lower.get_params(), coefs=self.lower.get_coefs(), fit=self.lower.fit_)
+        state['upper'] = dict(
+            params=self.upper.get_params(), coefs=self.upper.get_coefs(), fit=self.upper.fit_)
+
+        return state
+
+    def __setstate__(self, state):
+        self.lower.set_params(**state['lower']['params'])
+        self.lower.set_coefs(state['lower']['coefs'])
+        self.lower.fit_(state['lower']['fit'])
+
+        self.upper.set_params(**state['upper']['params'])
+        self.upper.set_coefs(state['upper']['coefs'])
+        self.upper.fit_(state['upper']['fit'])
 
 
 def load_arff_data(filepath):
@@ -41,6 +80,7 @@ def load_arff_data(filepath):
 
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--algorithm", required=True, choices=['vw', 'mf'])
     parser.add_argument("--input", required=True,
                         help="Path to the folder containing the arff files.")
     parser.add_argument("--output", type=str,
@@ -108,14 +148,17 @@ def run_experiment(i, input_file, output_path, scorers, args, X, y):
     np.random.seed()
     window_size = args.window_size
     print("Running repeat {}/{}".format(i + 1, args.repeats))
-    # Create and evaluate an MF regressor
-    mfr = MondrianForestRegressor(n_estimators=args.n_estimators)
+    # Create and evaluate a regressor
+    if args.algorithm == 'mf':
+        regressor = MondrianForestRegressor(n_estimators=args.n_estimators)
+    else:
+        regressor = VWIntervalRegressor(args.confidence)
 
     # If asked to save predictions, create requisite file
     pred_path = output_path / (input_file.stem + "_{}.pred".format(i)) if not args.no_additional_output else None
 
     results = prequential_interval_evaluation(
-        mfr, X, y, args.confidence, scorers, args.window_size, verbose=args.verbose,
+        regressor, X, y, args.confidence, scorers, args.window_size, verbose=args.verbose,
         additional_output=pred_path)
 
     # Create index column
@@ -132,7 +175,7 @@ def run_experiment(i, input_file, output_path, scorers, args, X, y):
     # Create a df with only the score measurements and the index
     df = pd.DataFrame({k: results[k] for k in included_columns})
     df.to_csv(output_path / (input_file.stem + "_{}.csv".format(i)), index=False)
-    return mfr.get_params()
+    return regressor.get_params()
 
 
 if __name__ == "__main__":
