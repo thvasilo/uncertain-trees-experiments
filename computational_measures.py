@@ -13,10 +13,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--input", required= True,
-                        help="A dir containing sub-dirs of results, one per method."
-                             "The sub-dirs contain csv files with output, one per dataset, per"
-                             "experiment repeat."
-                             "Sub-directory names will be used as method names in the plots.")
+                        help="A dir containing csvs of results, one per repeat.")
     parser.add_argument("--output", required=True,
                         help="The folder to create the output in")
     parser.add_argument("--overwrite", action="store_true", default=False,
@@ -37,23 +34,27 @@ def main():
                              'model cost (RAM-Hours)',
                              'model serialized size (bytes)']
 
-    combined_mean_df = pd.DataFrame(columns=computational_metrics)
+    combined_df = pd.DataFrame(columns=computational_metrics)
     prev_means = None
     experiment_values = {}
     # TODO: Support for multiple method directories, creation of comparison tables
-    for i, experiment_file in enumerate(input_path.glob("*.csv")):
+    experiment_index = 0
+    for experiment_file in input_path.glob("*.csv"):
         if experiment_file.match("*.pred.csv") or experiment_file.match("*.time.csv"):
             continue
         experiment_value = experiment_file.stem
-        experiment_values[i] = experiment_value
+        experiment_values[experiment_index] = experiment_value
         df = pd.read_csv(experiment_file)
+        # Get the last line of the dataframe, we want the final measurements of these metrics
+        df = df.iloc[[-1]]
         metrics_df = df[computational_metrics]
-        # Calculate the means for each dataset/experiment
-        means = metrics_df.mean()
-        means_df = means.to_frame().T.rename({0: experiment_value}, axis='index')
-        combined_mean_df = combined_mean_df.append(means_df, ignore_index=True)
+        # means = metrics_df.mean()
+        # means_df = means.to_frame().T.rename({0: experiment_value}, axis='index')
+        combined_df = combined_df.append(metrics_df, ignore_index=True)
+        experiment_index += 1
 
-    combined_mean_df = combined_mean_df.rename(experiment_values, axis='index')#.sort_index(ascending=True)
+    # Calculate the means for each dataset/experiment
+    combined_df = combined_df.rename(experiment_values, axis='index').sort_index(ascending=True)
 
     def include_aggregates(df):
         df.loc['Mean'] = df.mean()
@@ -61,13 +62,13 @@ def main():
         df.loc['Std'] = df.std()
         return df
 
-    combined_mean_df = include_aggregates(combined_mean_df)
+    combined_df = include_aggregates(combined_df)
 
     def create_table_str(df):
         #float_format = [".2f", ".4f", ".2f"]  # if outpath.name == "mean_error_rate" else ".2f"
         return tabulate(df, headers='keys', tablefmt='latex_booktabs')
-    combined_mean_df.to_csv(output_path / "averaged_comp_metrics.csv")
-    table_str = create_table_str(combined_mean_df)
+    combined_df.to_csv(output_path / "averaged_comp_metrics.csv")
+    table_str = create_table_str(combined_df)
     table_file = output_path / "averaged_comp_metrics.tex"
     table_file.write_text(table_str)
 
