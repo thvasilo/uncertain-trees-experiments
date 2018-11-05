@@ -19,7 +19,7 @@ from pylab import *
 from tabulate import tabulate
 from natsort import natsorted
 
-plt.style.use(['seaborn-whitegrid'])
+plt.style.use('seaborn-whitegrid')
 
 rcParams = matplotlib.rcParams
 
@@ -41,12 +41,15 @@ def parse_args():
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
+    parser.add_argument("--ris-figures", action="store_true", default=False,
+                        help="When given, will create window RIS instead of MIS figures."
+                             "Requires that prediction files are present!")
     parser.add_argument("--dont-create-tables", action="store_true", default=False,
                         help="When given, will not create table files")
     parser.add_argument("--dont-create-figures", action="store_true", default=False,
                         help="When given, will not generate figures.")
     parser.add_argument("--use-tex", action="store_true", default=False,
-                        help="When given, will use the Tex engine to create tex for the figures (slower)")
+                        help="When given, will use the Tex engine to create text for the figures (slower)")
     parser.add_argument("--expected-error", default=0.1,
                         help="The expected error level for the experiment. "
                              "Used to draw the expected error horizontal line and calculate "
@@ -103,7 +106,7 @@ def gather_metric(results_dict, metric):
     return dataset_to_metric
 
 
-def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery):
+def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery, normalization=None):
     """Returns an error-bar plot of the aggregated statistics (mean, var) for
        a specific dataset and metric, for each method in the provided dict.
     :param method_metric_dict: {method: {ds_name: measurements_df}}
@@ -122,11 +125,13 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery
     ax = fig.add_subplot(111)
     ax.set_xlabel('Instance')
     ax.set_ylabel(metric_name.title())
-    marker = itertools.cycle(('o', '^', 's', 'x', '*'))
+    marker = itertools.cycle(('o', '^', 's', 'x', '*', 'D', 'J'))
     # Get the method name, and its measurements for all datasets
     for method, ds_metric_dict in method_metric_dict.items():
         # Get the measurements for the requested data, and calc their stats
         metric_df = ds_metric_dict[dataset_name]
+        if normalization:
+            metric_df = metric_df / normalization
         mu = metric_df.mean()
         std_dev = metric_df.std()
         # Plot the line for the method and dataset
@@ -285,10 +290,10 @@ def main():
     for method_dir in sorted_dirs:
         method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
 
-    json_file = output_path / "plot-settings.json"
-    json_file.write_text(json.dumps(params))
+    json_file = output_path / "generate-figures-settings.json"
+    json_file.write_text(json.dumps({"plot_params": params, "args": vars(args)}))
 
-    for metric in ["mean error rate", "mean interval size"]:
+    for metric in ["mean error rate", "mean interval size", "evaluation time (cpu seconds)"]:
         # Aggregate the list of result df to a single df per dataset, per method.
         # Format: {method: {ds_name: measurements_df}}
         # Each line in measurements_df is one experiment
@@ -297,6 +302,7 @@ def main():
             # TODO: Make it possible to iterate over metrics?
             method_ds_metric[method] = gather_metric(ds_to_measurements, metric)
 
+        # TODO: Add support for VW here
         # Will try to rearrange columns in this order:
         # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
         # This is the order used in the paper.
@@ -330,11 +336,26 @@ def main():
             except KeyError:
                 # In which case we should have only Python-generated experiments, which should have an index column
                 x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
-            ax = plot_metric(method_ds_metric, dataset, x_axis, metric, args.mark_every)
-            if metric == "mean error rate":
-                ax.axhline(y=args.expected_error, linestyle='dashed', color='grey')
+            # If we asked for RIS instead of MIS, we need to get the true values, which are in the .pred.csv files
+            if metric == "mean interval size" and args.ris_figures:
+                pred_file = method_dirs[0].joinpath(dataset + "_0.pred.csv")
+                try:
+                    preds = pd.read_csv(pred_file)
+                except FileNotFoundError:
+                    raise FileNotFoundError("Could not find prediction file {}.\n"
+                                            "You can create these by running interval_metrics.py!".format(pred_file))
+                value_range = preds["true_value"].max() - preds["true_value"].min()
+                plot_metric(method_ds_metric, dataset, x_axis, "Relative Interval Size", args.mark_every, value_range)
+            else:
+                ax = plot_metric(method_ds_metric, dataset, x_axis, metric, args.mark_every)
+                if metric == "mean error rate":
+                    ax.axhline(y=args.expected_error, linestyle='dashed', color='grey')
+
             plt.legend()
-            outpath = Path(args.output) / (dataset + "-" + metric.replace(' ', '_') + ".pdf")
+            filename = metric
+            if metric == "mean interval size" and args.ris_figures:
+                filename = "relative interval size"
+            outpath = Path(args.output) / (dataset + "-" + filename.replace(' ', '_') + ".pdf")
             plt.savefig(str(outpath), bbox_inches='tight')
 
 
