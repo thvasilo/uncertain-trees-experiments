@@ -171,7 +171,8 @@ def run_experiment(i, input_file, output_path, scorers, args, X, y):
     results["index"] = window_index_list
 
     # Save scores and index columns to csv
-    included_columns = set(results.keys())
+    included_columns = ["index"]
+    included_columns.extend(sorted(results.keys()))
     # Create a df with only the score measurements and the index
     df = pd.DataFrame({k: results[k] for k in included_columns})
     df.to_csv(output_path / (input_file.stem + "_{}.csv".format(i)), index=False)

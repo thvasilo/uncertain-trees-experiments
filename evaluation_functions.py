@@ -149,9 +149,9 @@ def prequential_interval_evaluation(estimator, X, y, confidence, scoring, window
             total_duration += window_duration
             if additional_output is not None:
                 test_scores["window_time"].append(window_duration)
-                test_scores["overall_time"].append(total_duration)
+                test_scores["evaluation time (cpu seconds)"].append(total_duration)
                 model_size = sys.getsizeof(pickle.dumps(estimator))
-                test_scores["model_size"].append(model_size)
+                test_scores["model serialized size (bytes)"].append(model_size)
                 if verbose > 1:
                     print("Time to process window: {} sec".format(window_duration))
                     print("Model size: {} bytes, {} MiB".format(model_size, model_size/1024**2))
