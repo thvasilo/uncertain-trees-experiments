@@ -23,7 +23,7 @@ def main():
     parser.add_argument("--input", help="A directory containing one or more arff data files", required=True)
     parser.add_argument("--meta", help="The meta algorithm to use for training", required=True,
                         choices=["OnlineQRF", "CPApproximate", "PredictiveVarianceRF",
-                                 "CPExact"])
+                                 "CPExact", "SGDQR"])
     parser.add_argument("--repeats", help="Number of times to repeat each experiment", type=int, default=1)
     parser.add_argument("--window", help="Performance report window size", type=int, default=1000)
     parser.add_argument("--njobs", type=int, default=1,
@@ -56,7 +56,7 @@ def main():
     moa_jar_path = Path(args.moajar)
     moa_dir = moa_jar_path.parent
 
-    command_prefix = "java -cp \"{moa_jar}:{moa_dir}/dependency-jars/*\" ".format(moa_dir=moa_dir, moa_jar=moa_jar_path)
+    command_prefix = "java -Xmx62g -cp \"{moa_jar}:{moa_dir}/dependency-jars/*\" ".format(moa_dir=moa_dir, moa_jar=moa_jar_path)
     if not args.dont_measure_model_size:
         command_prefix += "-javaagent:{}/dependency-jars/sizeofag-1.0.0.jar ".format(moa_dir)
 
@@ -87,12 +87,16 @@ def main():
         raise FileNotFoundError("No arff files found in {} !".format(data_path))
 
     for arff_file in data_path.glob("*.arff"):
-        learner = "meta.{meta} -l {base} -s {size} -a {confidence} -j {threads}".format(
-            meta=args.meta, base=base_learner, size=args.ensemble_size,
-            confidence=args.confidence, threads=args.learner_threads)
-        if args.meta != "OnlineQRF":
-            learner += " -i {cal_size} ".format(cal_size=args.max_calibration_instances)
+        if args.meta != "SGDQR":
+            learner = "meta.{meta} -l {base} -s {size} -a {confidence} -j {threads}".format(
+                meta=args.meta, base=base_learner, size=args.ensemble_size,
+                confidence=args.confidence, threads=args.learner_threads)
         else:
+            learner = "meta.{meta} -a {confidence}".format(
+                meta=args.meta, confidence=args.confidence)
+        if args.meta not in ["OnlineQRF", "SGDQR"]: # Then it's a CP method
+            learner += " -i {cal_size} ".format(cal_size=args.max_calibration_instances)
+        elif args.meta == "OnlineQRF":
             learner += " -b {}".format(args.num_bins)
         for i in range(args.repeats):
             command = command_prefix + "moa.DoTask \" {task} -l ({learner}) " \
