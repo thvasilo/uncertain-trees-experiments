@@ -13,11 +13,12 @@ import pandas as pd
 import numpy as np
 from natsort import natsorted
 from tabulate import tabulate
+#from joblib import Parallel, delayed
 
 from generate_figures import sort_nicely, gather_metric
 
 MOA_METHODS = {"OnlineQRF", "OoBConformalRegressor", "OoBConformalApproximate", "PredictiveVarianceRF",
-               "CPExact", "CPApproximate"}
+               "CPExact", "CPApproximate", "OnlineQRF-SPDT", "OnlineQRF-KLL"}
 
 
 def parse_args():
@@ -29,6 +30,9 @@ def parse_args():
                              "Sub-directory names will be used as method names in the plots.")
     parser.add_argument("--output", required=True,
                         help="The folder to create the output in")
+    parser.add_argument("--only-pred-files", action="store_true", default=False,
+                        help="When given, will not claculate metrics, only formatted prediction files."
+                             " Use when you want RIS metrics for generate figures with large datasets.")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
@@ -93,12 +97,16 @@ def create_pred_csvs(method_dir: Path, force_moa: bool):
             parse_file(res_file, parse_moa_line)
         else:
             parse_file(res_file, parse_skgarden_line)
-    # TODO: Parallelize
-    # with Parallel(n_jobs=args.njobs) as parallel:
-    #     parallel(delayed(parse_file)(
-    #         res_file, parse_moa_line if res_file.parent.name in MOA_METHODS or args.force_moa
-    #         else res_file, parse_skgarden_line)
-    #              for res_file in method_dir.glob("*.pred"))
+    # TODO: Parallelize?
+    # prep_args = []
+    # for res_file in method_dir.glob("*.pred"):
+    #     if res_file.parent.name in MOA_METHODS or force_moa:
+    #         prep_args.append((res_file, parse_moa_line))
+    #     else:
+    #         prep_args.append((res_file, parse_skgarden_line))
+    # with Parallel(args.njobs) as parallel:
+    #     parallel(delayed(parse_file)(args)
+    #              for args in prep_args)
 
 
 def normalize(x, true_col):
@@ -160,6 +168,10 @@ def main():
     method_to_dsname_to_result_df_list = OrderedDict()
     sorted_dirs = sort_nicely(method_dirs)
     mean_tables = {}
+    # TODO: For experiments with large outputs (prediction files with many lines) we have computationa and memory issues
+    # The problem is that we maintain all results as a Pandas dataframe. For example for an experiment with 1M rows,
+    # 10 repeats, 3 methods, the prediction data frames hold 90M float/double values. Processing these becomes
+    # a challenge, we should find a way to 1) not store the complete data in memory 2) parallelize by method+metric
     for method_dir in sorted_dirs:
         # TODO: Have proper check that each result_X.csv file has respective result_X.pred
         if len(list(method_dir.glob("*.pred"))) == 0:
@@ -171,7 +183,14 @@ def main():
                 method_dir.name, num_pred_files - num_processed_pred_files, num_pred_files))
             create_pred_csvs(method_dir, args.force_moa)
         # After .pred.csv files have been created, gather metrics
-        method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
+        if not args.only_pred_files:
+            method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
+
+    if args.only_pred_files:
+        print("Finished creating prediction files, exiting...")
+        sys.exit()
+    else:
+        print("Continuing with metric calculation...")
 
     for metric in ["error_rate", "weighted_correct", "relative_interval_size"]:
         method_ds_metric = OrderedDict()
@@ -268,14 +287,25 @@ def main():
         # Will try to rearrange columns in this order:
         # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
         # This is the order used in the paper.
-        try:
-            order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
-            mean_aggregate_metric_df = mean_aggregate_metric_df[order]
-            median_aggregate_metric_df = median_aggregate_metric_df[order]
-            std_aggregate_metric_df = std_aggregate_metric_df[order]
-        except KeyError:
-            # If a column was missing just leave them as they were
-            pass
+        order = sorted(mean_aggregate_metric_df.keys())
+        # try:
+        #     if "SGDQR" in method_ds_metric:
+        #         order = ["SGDQR", "MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+        #     else:
+        #         order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+        #     if args.exclude is not None:
+        #         for excluded_method in args.exclude:
+        #             order.remove(excluded_method)
+        #     mean_aggregate_metric_df = mean_aggregate_metric_df[order]
+        #     median_aggregate_metric_df = median_aggregate_metric_df[order]
+        #     std_aggregate_metric_df = std_aggregate_metric_df[order]
+        # except KeyError:
+        #     # If a column was missing just leave them as they were
+        #     pass
+        mean_aggregate_metric_df = mean_aggregate_metric_df[order]
+        median_aggregate_metric_df = median_aggregate_metric_df[order]
+        std_aggregate_metric_df = std_aggregate_metric_df[order]
+
         mean_tables[metric] = mean_aggregate_metric_df
         # TODO: Create figures? Maybe window metric?
         mean_table_str = create_table_str(mean_aggregate_metric_df)
