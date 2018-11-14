@@ -11,6 +11,7 @@ import argparse
 from collections import defaultdict, OrderedDict
 from pathlib import Path
 import itertools
+import logging
 import json
 
 import matplotlib.pyplot as plt
@@ -119,6 +120,8 @@ def plot_metric(method_metric_dict, dataset_name, x_axis, metric_name, markevery
     :param metric_name: The name of the metric we are plotting
     :param markevery: int
         Place a marker every this many points on the lines.
+    :param normalization: A number that we use to normalize the measurements by. This is used
+        to produce relative interval sizes instead of absolute.
     :return: A matplotlib Axes object, containing the plotted figure (no legends)
     """
     fig = plt.figure()
@@ -293,7 +296,7 @@ def main():
     json_file = output_path / "generate-figures-settings.json"
     json_file.write_text(json.dumps({"plot_params": params, "args": vars(args)}))
 
-    for metric in ["mean error rate", "mean interval size", "evaluation time (cpu seconds)"]:
+    for metric in ["mean error rate", "mean interval size"]:
         # Aggregate the list of result df to a single df per dataset, per method.
         # Format: {method: {ds_name: measurements_df}}
         # Each line in measurements_df is one experiment
@@ -302,16 +305,24 @@ def main():
             # TODO: Make it possible to iterate over metrics?
             method_ds_metric[method] = gather_metric(ds_to_measurements, metric)
 
-        # TODO: Add support for VW here
+        # TODO: Check if same number of experiments exists for each method
         # Will try to rearrange columns in this order:
         # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
         # This is the order used in the paper.
-        original_dict = method_ds_metric
-        try:
-            order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
-            method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
-        except KeyError:
-            method_ds_metric = original_dict
+        order = sorted(method_ds_metric.keys())
+        # original_dict = method_ds_metric
+        # try:
+        #     if "SGDQR" in method_ds_metric:
+        #         order = ["SGDQR", "MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+        #     else:
+        #         order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+        #     if args.exclude is not None:
+        #         for excluded_method in args.exclude:
+        #             order.remove(excluded_method)
+        #     method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
+        # except KeyError:
+        #     method_ds_metric = original_dict
+        method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
 
         # Gather the names of datasets
         ds_names = set()
