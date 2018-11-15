@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 from natsort import natsorted
 from tabulate import tabulate
-# from joblib import Parallel, delayed
+from joblib import Parallel, delayed
 
 from generate_figures import sort_nicely, gather_metric
 
@@ -51,6 +51,8 @@ def parse_args():
                         help="Enforce parsing of the dirs using the MOA format."
                              "Use when directory names don't match a method name (e.g. OnlineQRF),"
                              "MondrianForest parsing is used as the default in that case.")
+    parser.add_argument("--njobs", help="The number of jobs to use for prediction file parsing/creation."
+                                        "The default is to use all available cores.", type=int, default=-1)
 
     return parser.parse_args()
 
@@ -70,7 +72,7 @@ def parse_skgarden_line(line: str) -> str:
     return parsed_line
 
 
-def parse_file(filepath: Path, parse_line):
+def parse_file(filepath: Path, force_moa):
     """
     Reads a prediction file created either by MOA or skgarden_experiments,
     and creates a csv with the values, formatted as
@@ -79,34 +81,28 @@ def parse_file(filepath: Path, parse_line):
     the extension .pred.csv
     :param filepath: Path
         A Path object to a predictions file
-    :param parse_line: str -> str
-        A callable that takes a string, parses it, and returns a string in
-        the expected format.
+    :param force_moa: When true will force MOA parsing to be used, regardless of containing directory name
     """
     if not filepath.with_suffix(".pred.csv").exists():
+        # If the containing directory is one of the MOA methods, or we enforce it, use the MOA parser
+        if filepath.parent.name in MOA_METHODS or force_moa:
+            parse_line = parse_moa_line
+        else:
+            # Otherwise we assume it's a skgarden_experiments generated output file
+            parse_line = parse_skgarden_line
         with filepath.open() as infile, filepath.with_suffix(".pred.csv").open('w') as outfile:
             outfile.write("interval_low,interval_high,true_value\n")
             for line in infile:
                 parsed_line = parse_line(line)
                 outfile.write(parsed_line + '\n')
+        # TODO: Actually it seems like skgarden parsing works for both, pandas assumes the "Out: " is an index
+        # TODO: Maybe include a sanity check here just to inform the user? The outcome is correct anyway
 
 
-def create_pred_csvs(method_dir: Path, force_moa: bool):
-    for res_file in method_dir.glob("*.pred"):
-        if res_file.parent.name in MOA_METHODS or force_moa:
-            parse_file(res_file, parse_moa_line)
-        else:
-            parse_file(res_file, parse_skgarden_line)
-    # TODO: Parallelize?
-    # prep_args = []
-    # for res_file in method_dir.glob("*.pred"):
-    #     if res_file.parent.name in MOA_METHODS or force_moa:
-    #         prep_args.append((res_file, parse_moa_line))
-    #     else:
-    #         prep_args.append((res_file, parse_skgarden_line))
-    # with Parallel(args.njobs) as parallel:
-    #     parallel(delayed(parse_file)(args)
-    #              for args in prep_args)
+def create_pred_csvs(method_dir: Path, force_moa: bool, njobs):
+    with Parallel(njobs) as parallel:
+        parallel(delayed(parse_file)(res_file, force_moa)
+                 for res_file in method_dir.glob("*.pred"))
 
 
 def normalize(x, true_col):
