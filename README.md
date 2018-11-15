@@ -33,7 +33,7 @@ python moa_experiments.py --moajar /path/to/moa.jar --input /path/to/data --meta
 Used to run the Mondrian Forest experiments using scikit-garden.
 
 
-Usage: `python skgarden_experiments.py --input path/to/data`
+Usage: `python skgarden_experiments.py --method mf --input path/to/data`
 
 As above, you can check the argument help to get all the relevant
 options.
@@ -57,7 +57,7 @@ sweeping over algorithm parameters. Example usage:
   --input /home/user/data/moa  --repeats 10 --window 1000 --njobs 4 \
   --learner-threads 1 --verbose 1" \
   --output-prefix /home/user/output/uncertain-trees/moa --sweep-argument meta\
-  --argument-list OnlineQRF OoBConformalApproximate OoBConformalRegressor
+  --argument-list OnlineQRF CPExact CPApproximate
 ```
 
 The above will call the `moa_experiments.py` with the provided command,
@@ -74,7 +74,7 @@ It's also possible to call with a range argument:
 
 ```bash
 ./parameter_sweep.py --command "python moa_experiments.py  --moajar $MOA_JAR \
-  --input /home/user/data/moa  --repeats 10 --window 1000 --njobs 2 --meta OoBConformalRegressor \
+  --input /home/user/data/moa  --repeats 10 --window 1000 --njobs 2 --meta CPApproximate \
   --learner-threads 2 --overwrite --verbose 1" --sweep-argument max-calibration-instances \
   --output-prefix /home/user/output/moa/onlinecp-max-cal-instances --argument-range 100 1001 100
 ```
@@ -85,7 +85,7 @@ to a value of 100-1000 with a step of 100.
 Finally the script can do two levels of sweeps using `--inner-sweep-parameter` and
 `--inner-argument-list` or `--inner-argument-range` with the same syntax.
 
-## Generating ouput
+## Generating output
 
 The following scripts use the output of the experiment automation scripts
 to produce figures and TeX tables.
@@ -111,6 +111,12 @@ This script is used to generate post-hoc metrics for the methods, like Relative
 Interval Size and overall correctness. The syntax is the same as for `generate_figures.py`.
 
 It does so by parsing the produced prediction files, selecting the correct parser
-to use based on the directory name. The fall back parser is for Mondrian Forests,
+to use based on the directory name. The default parser is for Mondrian Forests,
 we can use `--force-moa` to enforce MOA parsing (e.g. when parsing parameter sweeps where dirs
 have non-method names)
+
+### computational_measures.ps
+
+This script is used to generate computational metrics by taking the total runtime and
+model size for a method, and providing an aggregate table for all the experiments in
+the input directory.

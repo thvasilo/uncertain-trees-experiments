@@ -13,12 +13,12 @@ import pandas as pd
 import numpy as np
 from natsort import natsorted
 from tabulate import tabulate
-#from joblib import Parallel, delayed
+# from joblib import Parallel, delayed
 
 from generate_figures import sort_nicely, gather_metric
 
 MOA_METHODS = {"OnlineQRF", "OoBConformalRegressor", "OoBConformalApproximate", "PredictiveVarianceRF",
-               "CPExact", "CPApproximate", "OnlineQRF-SPDT", "OnlineQRF-KLL"}
+               "CPExact", "CPApproximate", "SGDQR"}
 
 
 def parse_args():
@@ -132,14 +132,9 @@ def gather_method_results(method_dir: Path):
         true_max = df["true_value"].max()
         true_min = df["true_value"].min()
         df["relative_interval_size"] = df["interval_size"] / (true_max - true_min)
-        df['weighted_correct'] = np.where(
-            (df['interval_high'] >= df['true_value']) & (df['interval_low'] <= df['true_value']),
-            df['relative_interval_size'], np.nan)
         df['error_rate'] = np.where(
             (df['true_value'] <= df['interval_high']) & (df['true_value'] >= df['interval_low']),
             0, 1)
-        # df["interval_high_norm"] = normalize(df["interval_high"], df["true_value"])
-        # df["interval_lower_norm"] = normalize(df["interval_low"], df["true_value"])
         res[base_name].append(df)
     return res
 
@@ -190,9 +185,9 @@ def main():
         print("Finished creating prediction files, exiting...")
         sys.exit()
     else:
-        print("Continuing with metric calculation...")
+        print("Prediction files created, continuing with metric calculation...")
 
-    for metric in ["error_rate", "weighted_correct", "relative_interval_size"]:
+    for metric in ["error_rate", "relative_interval_size"]:
         method_ds_metric = OrderedDict()
         for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
             # TODO: Make it possible to iterate over metrics?
@@ -209,19 +204,7 @@ def main():
             ds_stds = []
             # Get the measurements for the requested data, and calc their stats
             for dataset_name, metric_df in natsorted(ds_name_to_measurements.items()):
-                if metric == "weighted_correct":
-                    relative_interval_sums = metric_df.sum(axis=1)  # Mean for each example over repeats
-                    non_na_counts = metric_df.count(axis=1)
-                    # Correctness is metric that tries to measure how good a method is, by multiplying its
-                    # relative intervals by the number of mistakes it does.
-                    # So methods that are correct often but have relatively large intervals should fare
-                    # better than methods that have small intervals, but are incorrect often.
-                    # correctness = relative_interval_sums / (counts / metric_df.shape[1])
-                    correctness = non_na_counts / metric_df.shape[1]
-                    overall_mean = correctness.mean()
-                    overall_median_mean = correctness.median()
-                    overall_std_mean = correctness.std()
-                elif metric == "error_rate":
+                if metric == "error_rate":
                     error_counts = metric_df.sum(axis=1)
                     error_rates = error_counts / metric_df.shape[1]
                     overall_mean = error_rates.mean()
@@ -328,6 +311,7 @@ def main():
             return True
         except ValueError:
             return False
+
     for method_name in method_dirs:
         if is_number(method_name.name):
             print("Seems like you're running this on top of confidence output, so we won't create utility output.")
