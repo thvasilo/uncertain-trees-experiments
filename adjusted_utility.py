@@ -38,13 +38,13 @@ def main():
             utilities = utilities.drop(args.exclude, axis=1)
             error_rates = error_rates.drop(args.exclude, axis=1)
         except ValueError as e:
-            logging.warn("Could not drop requested columns,  error was \"{}\"".format(e))
+            logging.warning("Could not drop requested columns,  error was \"{}\"".format(e))
     elif args.include_only is not None:
         try:
             utilities = utilities[args.include_only]
             error_rates = error_rates[args.include_only]
         except KeyError as e:
-            logging.warn("Could not include requested columns,  error was \"{}\"".format(e))
+            logging.warning("Could not include requested columns,  error was \"{}\"".format(e))
 
     # We set the half life to be at an error rate of 1.5 times the requested one
     # That means that the utility of a method will be half if the method has 1.5 times the requested error rate
@@ -59,7 +59,7 @@ def main():
     try:
         adjusted_utilities = adjusted_utilities[args.table_order]
     except KeyError:
-        logging.warn("Could not set column order to {},  available columns were {}".format(
+        logging.warning("Could not set column order to {},  available columns were {}".format(
             args.table_order, adjusted_utilities.columns.values))
         pass
 

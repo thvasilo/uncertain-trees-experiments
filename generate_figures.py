@@ -36,7 +36,7 @@ def parse_args():
                         help="A dir containing sub-dirs of results, one per method."
                              "The sub-dirs contain csv files with output, one per dataset, per"
                              "experiment repeat."   
-                             "Sub-directory names will be used as method names in the plots.")
+                             "Sub-directory names will be used as method names in the output.")
     parser.add_argument("--output", required= True,
                         help="The folder to create the output in")
     parser.add_argument("--overwrite", action="store_true", default=False,
@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument("--use-tex", action="store_true", default=False,
                         help="When given, will use the Tex engine to create text for the figures (slower)")
     parser.add_argument("--expected-error", default=0.1,
-                        help="The expected error level for the experiment. "
+                        help="The expected error level (significance) for the experiment. "
                              "Used to draw the expected error horizontal line and calculate "
                              "the MER deviation.")
     parser.add_argument("--mark-every", default=1, type=int,
@@ -61,9 +61,9 @@ def parse_args():
     parser.add_argument("--fig-width", type=int, default=6)
     alg_selection = parser.add_mutually_exclusive_group()
     alg_selection.add_argument("--include-only", nargs='+',
-                               help="Include only the provided output directories")
+                               help="Include only the provided input directories")
     alg_selection.add_argument("--exclude", nargs='+',
-                               help="Exclude the provided output directories")
+                               help="Exclude the provided input directories")
 
     return parser.parse_args()
 
