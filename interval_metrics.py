@@ -40,6 +40,8 @@ def parse_args():
                         help="The window size to use to calculate the per window metrics.")
     parser.add_argument("--expected-mer", type=float, default=0.1,
                         help="The expected MER for these experiments.")
+    parser.add_argument("--table-order", nargs='+', help="The order to put the table columns in. Should "
+                                                         "match the method directory names.")
     # parser.add_argument("--njobs", type=int, default=1,
     #                     help="Number of prediction files to process in parallel.")
     alg_selection = parser.add_mutually_exclusive_group()
@@ -110,10 +112,10 @@ def normalize(x, true_col):
     return normalized
 
 
-def gather_method_results(method_dir: Path):
+def gather_method_results(method_dir: Path, significance):
     """
     Goes through all generated .pred.csv files in a method dir, collects the results
-    per dataset, and creates a list of metric dataframes per metric.
+    per dataset, and creates a list of metric dataframes per metric.1
     :param method_dir: A Path to method dir, contains repeats of experiments, with the suffix _x.pred.csv
     where x is the experiment repeat index.
     :return: Returns a dictionary {dataset_name: metric_df_list}
@@ -124,13 +126,23 @@ def gather_method_results(method_dir: Path):
         base_name = res_file.name.split('.')[0][:-2]
 
         df = pd.read_csv(res_file)
-        df["interval_size"] = df["interval_high"] - df["interval_low"]
+        df["interval_size"] = np.abs(df["interval_high"] - df["interval_low"])
         true_max = df["true_value"].max()
         true_min = df["true_value"].min()
         df["relative_interval_size"] = df["interval_size"] / (true_max - true_min)
         df['error_rate'] = np.where(
             (df['true_value'] <= df['interval_high']) & (df['true_value'] >= df['interval_low']),
             0, 1)
+        interval_deviation_upper = np.where((df['true_value'] > df['interval_high']),
+                                            df['true_value'] - df['interval_high'], 0)
+        interval_deviation_lower = np.where((df['true_value'] < df['interval_low']),
+                                            df['interval_low'] - df['true_value'], 0)
+        relative_interval_deviation = (interval_deviation_lower + interval_deviation_upper) / (true_max - true_min)
+        assert np.all(relative_interval_deviation >= 0), "Deviation should be >= 0"
+        df["quantile_loss"] = np.where(
+            (df['true_value'] <= df['interval_high']) & (df['true_value'] >= df['interval_low']),
+            df["relative_interval_size"] * significance,
+            significance * df["relative_interval_size"] + relative_interval_deviation)
         res[base_name].append(df)
     return res
 
@@ -172,10 +184,10 @@ def main():
         if num_processed_pred_files != num_pred_files:
             print(".pred.csv files missing in {}. Creating {}/{}".format(
                 method_dir.name, num_pred_files - num_processed_pred_files, num_pred_files))
-            create_pred_csvs(method_dir, args.force_moa)
+            create_pred_csvs(method_dir, args.force_moa, args.njobs)
         # After .pred.csv files have been created, gather metrics
         if not args.only_pred_files:
-            method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir)
+            method_to_dsname_to_result_df_list[method_dir.name] = gather_method_results(method_dir, args.expected_mer)
 
     if args.only_pred_files:
         print("Finished creating prediction files, exiting...")
@@ -183,7 +195,7 @@ def main():
     else:
         print("Prediction files created, continuing with metric calculation...")
 
-    for metric in ["error_rate", "relative_interval_size"]:
+    for metric in ["error_rate", "relative_interval_size", "quantile_loss"]:
         method_ds_metric = OrderedDict()
         for method, ds_to_measurements in method_to_dsname_to_result_df_list.items():
             # TODO: Make it possible to iterate over metrics?
@@ -200,13 +212,13 @@ def main():
             ds_stds = []
             # Get the measurements for the requested data, and calc their stats
             for dataset_name, metric_df in natsorted(ds_name_to_measurements.items()):
-                if metric == "error_rate":
+                if metric == "error_rate":  # Error rate requires special treatment
                     error_counts = metric_df.sum(axis=1)
                     error_rates = error_counts / metric_df.shape[1]
                     overall_mean = error_rates.mean()
                     overall_median_mean = error_rates.median()
                     overall_std_mean = error_rates.std()
-                else:  # Then it's RIS
+                else:  # Then it's RIS or quantile_loss
                     relative_interval_means = metric_df.mean()  # Mean for each example over repeats
                     relative_interval_medians = metric_df.median()  # Median for each example over repeats
                     relative_interval_stds = metric_df.std()  # Std for each example over repeats
@@ -260,27 +272,20 @@ def main():
         std_aggregate_metric_df.to_csv(table_outpath.with_suffix(".std.csv"))
 
         def create_table_str(df):
-            float_format = ".3f" if metric == "error_rate" else ".2f"
+            float_format = ".3f" if metric in ["error_rate", "quantile_loss"] else ".2f"
             return tabulate(df, headers='keys', tablefmt='latex_booktabs', floatfmt=float_format)
 
         # Will try to rearrange columns in this order:
         # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
         # This is the order used in the paper.
-        order = sorted(mean_aggregate_metric_df.keys())
-        # try:
-        #     if "SGDQR" in method_ds_metric:
-        #         order = ["SGDQR", "MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
-        #     else:
-        #         order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
-        #     if args.exclude is not None:
-        #         for excluded_method in args.exclude:
-        #             order.remove(excluded_method)
-        #     mean_aggregate_metric_df = mean_aggregate_metric_df[order]
-        #     median_aggregate_metric_df = median_aggregate_metric_df[order]
-        #     std_aggregate_metric_df = std_aggregate_metric_df[order]
-        # except KeyError:
-        #     # If a column was missing just leave them as they were
-        #     pass
+        order = args.table_order if args.table_order is not None else sorted(mean_aggregate_metric_df.keys())
+        try:
+            mean_aggregate_metric_df = mean_aggregate_metric_df[order]
+            median_aggregate_metric_df = median_aggregate_metric_df[order]
+            std_aggregate_metric_df = std_aggregate_metric_df[order]
+        except KeyError:
+            # If a column was missing just leave them as they were
+            pass
         mean_aggregate_metric_df = mean_aggregate_metric_df[order]
         median_aggregate_metric_df = median_aggregate_metric_df[order]
         std_aggregate_metric_df = std_aggregate_metric_df[order]
