@@ -8,6 +8,7 @@ from pathlib import Path
 from collections import OrderedDict, defaultdict
 import re
 import sys
+import logging as log
 
 import pandas as pd
 import numpy as np
@@ -31,8 +32,8 @@ def parse_args():
     parser.add_argument("--output", required=True,
                         help="The folder to create the output in")
     parser.add_argument("--only-pred-files", action="store_true", default=False,
-                        help="When given, will not claculate metrics, only formatted prediction files."
-                             " Use when you want RIS metrics for generate figures with large datasets.")
+                        help="When given, will not calculate metrics, only create formatted prediction files."
+                             " Use when you want RIS metrics for generate_figures with large datasets.")
     parser.add_argument("--overwrite", action="store_true", default=False,
                         help="When given, will not check if the output folder already exists ,"
                              "potentially overwriting its contents.")
@@ -52,7 +53,7 @@ def parse_args():
     parser.add_argument("--force-moa", action="store_true", default=False,
                         help="Enforce parsing of the dirs using the MOA format."
                              "Use when directory names don't match a method name (e.g. OnlineQRF),"
-                             "MondrianForest parsing is used as the default in that case.")
+                             "Otherwise, MondrianForest parsing is used as the default.")
     parser.add_argument("--njobs", help="The number of jobs to use for prediction file parsing/creation."
                                         "The default is to use all available cores.", type=int, default=-1)
 
@@ -126,6 +127,7 @@ def gather_method_results(method_dir: Path, significance):
         base_name = res_file.name.split('.')[0][:-2]
 
         df = pd.read_csv(res_file)
+        df.index = range(len(df))  # For MOA files it was using "Out\:" as index which was causing issues
         df["interval_size"] = np.abs(df["interval_high"] - df["interval_low"])
         true_max = df["true_value"].max()
         true_min = df["true_value"].min()
@@ -275,9 +277,7 @@ def main():
             float_format = ".3f" if metric in ["error_rate", "quantile_loss"] else ".2f"
             return tabulate(df, headers='keys', tablefmt='latex_booktabs', floatfmt=float_format)
 
-        # Will try to rearrange columns in this order:
-        # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
-        # This is the order used in the paper.
+        # Will try to rearrange columns in the order provided by the user, otherwise just sorted.
         order = args.table_order if args.table_order is not None else sorted(mean_aggregate_metric_df.keys())
         try:
             mean_aggregate_metric_df = mean_aggregate_metric_df[order]
@@ -285,6 +285,7 @@ def main():
             std_aggregate_metric_df = std_aggregate_metric_df[order]
         except KeyError:
             # If a column was missing just leave them as they were
+            log.warning("Could not rearrange colums to {}".format(order))
             pass
         mean_aggregate_metric_df = mean_aggregate_metric_df[order]
         median_aggregate_metric_df = median_aggregate_metric_df[order]
@@ -315,9 +316,9 @@ def main():
 
     for method_name in method_dirs:
         if is_number(method_name.name):
-            print("Seems like you're running this on top of confidence output, so we won't create utility output.")
-            print("Method list was: {}.".format(method_dirs))
-            print("Use confidence_utility_calculation.py instead!")
+            log.warning("Seems like you're running this on top of confidence output, so we won't create utility output.")
+            log.warning("Method list was: {}.".format(method_dirs))
+            log.warning("Use confidence_utility_calculation.py instead!")
             sys.exit()
 
     # Create adjusted utility table with step time/utility function (using expected MER as deadline)

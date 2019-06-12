@@ -100,9 +100,8 @@ def gather_metric(results_dict, metric):
     """
     dataset_to_metric = {}
     for ds_name, df_list in results_dict.items():
-        metric_df = pd.DataFrame()
-        for inner_df in df_list:
-            metric_df = metric_df.append(inner_df[metric])
+        # TODO: Probably faster to do the projection before the concat
+        metric_df = pd.concat(df_list, axis=1).loc[:, [metric]].T
         dataset_to_metric[ds_name] = metric_df
     return dataset_to_metric
 
@@ -229,9 +228,11 @@ def create_tables(method_metric_dict, outpath, expected_error):
         df.loc['Std'] = df.std()
         return df
 
-    mean_aggregate_metric_df = create_df(mean_method_to_measurements)
-    std_aggregate_metric_df = create_df(std_method_to_measurements)
-    median_aggregate_metric_df = create_df(median_method_to_measurements)
+    order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+
+    mean_aggregate_metric_df = create_df(mean_method_to_measurements)[order]
+    std_aggregate_metric_df = create_df(std_method_to_measurements)[order]
+    median_aggregate_metric_df = create_df(median_method_to_measurements)[order]
 
     mean_aggregate_metric_df.to_csv(outpath.with_suffix(".means.csv"))
     std_aggregate_metric_df.to_csv(outpath.with_suffix(".stds.csv"))
@@ -275,6 +276,9 @@ def main():
 
     input_path = Path(args.input).absolute()
     output_path = Path(args.output).absolute()
+    # TODO: Allow custom order
+    # fig_order =
+    # args.table_order if args.table_order is not None else ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
 
     assert output_path.parent != input_path, "Setting output path under input can cause issues, choose another path."
     output_path.mkdir(parents=True, exist_ok=args.overwrite)
@@ -309,20 +313,21 @@ def main():
         # Will try to rearrange columns in this order:
         # [MondrianForest, OnlineQRF, CPApproximate, CPExact].
         # This is the order used in the paper.
-        order = sorted(method_ds_metric.keys())
-        # original_dict = method_ds_metric
-        # try:
-        #     if "SGDQR" in method_ds_metric:
-        #         order = ["SGDQR", "MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
-        #     else:
-        #         order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
-        #     if args.exclude is not None:
-        #         for excluded_method in args.exclude:
-        #             order.remove(excluded_method)
-        #     method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
-        # except KeyError:
-        #     method_ds_metric = original_dict
-        method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
+        # TODO: Take table order from arguments, have a sensible default with exception handling
+        # order = sorted(method_ds_metric.keys())
+        original_dict = method_ds_metric
+        try:
+            if "SGDQR" in method_ds_metric:
+                order = ["SGDQR", "MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+            else:
+                order = ["MondrianForest", "OnlineQRF", "CPApproximate", "CPExact"]
+            if args.exclude is not None:
+                for excluded_method in args.exclude:
+                    order.remove(excluded_method)
+            method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
+        except KeyError:
+            method_ds_metric = original_dict
+        # method_ds_metric = OrderedDict((k, method_ds_metric[k]) for k in order)
 
         # Gather the names of datasets
         ds_names = set()
@@ -349,6 +354,7 @@ def main():
                 x_axis = method_to_dsname_to_result_df_list[sample_method][dataset][0]["index"].astype(int)
             # If we asked for RIS instead of MIS, we need to get the true values, which are in the .pred.csv files
             if metric == "mean interval size" and args.ris_figures:
+                # We just need the true value range, so the first pred file will do, they're all the same anyway
                 pred_file = method_dirs[0].joinpath(dataset + "_0.pred.csv")
                 try:
                     preds = pd.read_csv(pred_file)

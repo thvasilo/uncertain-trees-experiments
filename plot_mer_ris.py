@@ -41,15 +41,14 @@ def main():
     }
     rcParams.update(params)
 
-    prefix = Path(args.input)  # "/home/tvas/Dropbox/SICS/uncertain-trees/results/figures/friedman/"
+    prefix = Path(args.input)
 
     mer_path = prefix / "mean_error_rate.means.csv"
-    util_path = prefix / "utility.csv"
     ris_path = prefix / "relative_interval_size.means.csv"
 
     mers = pd.read_csv(mer_path)
     mer = mers.set_index("Dataset").iloc[:-3]
-    util = pd.read_csv(util_path).set_index("Dataset")
+
     ris = pd.read_csv(ris_path).set_index("Dataset").iloc[:-3]
 
     def scatter_points(x_points, y_points, marker):
