@@ -99,11 +99,11 @@ tables and figures if requested.
 For example given the example run in `parameter_sweep.py`, we could run:
 
 ```bash
-python generate_figures.py --input /home/user/output/uncertain-trees/moa \
-  --input /home/user/figures/moa
+python generate_figures.py --input /home/user/experiment-output/uncertain-trees/moa \
+  --output /home/user/figures/moa
 ```
 
-This would create comparison figures and TeX tables under the input directory.
+This would create comparison figures and TeX tables under the output directory.
 
 ### interval_metrics.py
 
